@@ -128,8 +128,6 @@ def play(a) -> int:
                               "tools": TOOLS, "context_length": a.context_length,
                               "sampler": sampler}) + "\n")
     counts = collections.Counter()
-    # a piece's first reply plans the placement and the rest mostly press the next button: never pooled
-    latencies, completion = {"first": [], "later": []}, {"first": [], "later": []}
     decisions = nudges = replies = extra = 0
     per_reply, repeats, refused, unpressed, pressless = collections.Counter(), 0, 0, 0, 0
     conv: list = []
@@ -185,10 +183,7 @@ def play(a) -> int:
         msg = resp["choices"][0]["message"]
         calls = msg.get("tool_calls") or []
         usage = resp.get("usage") or {}
-        turn = "first" if conv_turn == 0 else "later"
-        completion[turn].append(usage.get("completion_tokens") or 0)
         replies += 1
-        latencies[turn].append(ms)
         reasoning = msg.get("reasoning") or msg.get("reasoning_content")
         pt, ct = usage.get("prompt_tokens") or 0, usage.get("completion_tokens") or 0
         # Check: the history reached the prompt. After a nudge the prompt may shrink (the nudge is a user turn
@@ -317,19 +312,12 @@ def play(a) -> int:
             journal.write(json.dumps({"kind": "reply", **reply, "plan": plan, "pieces": piece}) + "\n")
             journal.flush()
     end = game.info()
-    def p50(xs):
-        return sorted(xs)[len(xs) // 2] if xs else None
-
-    turns = {key: {"replies": len(completion[t]), "completion_tokens_p50": p50(completion[t]),
-                   "call_ms_p50": p50(latencies[t])}
-             for key, t in (("first_reply", "first"), ("later_replies", "later"))}
     summary = {"kind": "summary", "ticks": tick, "decisions": decisions, "parse_failures": nudges,
                "nudges": nudges, "seed": a.seed, "lag_frames": a.lag_frames,
                "actions": dict(counts), "lines": end["lines"], "score": end["score"],
                "pieces": end["pieces"] if game.game_over else a.max_pieces,
                "frames": len(game.inputs),
                "game_over": game.game_over, "termination": "game_over" if game.game_over else "max_pieces",
-               **turns,
                "decision": "verbs", "replies": replies, "calls_per_reply": dict(sorted(per_reply.items())),
                "repeated_calls": repeats, "refused_calls": refused, "unpressed_after_lock": unpressed,
                "pressless_replies": pressless, "calls_with_extra_arguments": extra,
