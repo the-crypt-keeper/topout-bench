@@ -353,8 +353,10 @@ def main() -> int:
                    help="safety cap on the frames one press may run")
     p.add_argument("--timeout", type=float, default=7200.0,
                    help="per request; a stall detector, not a budget: 128k tokens at 20 tok/s is ~6400 s")
+    p.add_argument("--games", type=int, default=None,
+                   help="games of this seed to play in all, each under OUTPUT/<i> (default: --parallel)")
     p.add_argument("--parallel", type=int, default=1,
-                   help="games of this seed at once against the engine, each under OUTPUT/<i>")
+                   help="games playing at once against the engine; as one ends the next starts, until --games")
     p.add_argument("--first-turn-max-tokens", type=int, default=None,
                    help="max_tokens for a fresh conversation's first reply; with --first-turn-retries")
     p.add_argument("--first-turn-retries", type=int, default=None,
@@ -368,14 +370,18 @@ def main() -> int:
         p.error("--context-length must be positive")
     if a.parallel < 1:
         p.error("--parallel must be >= 1")
+    if a.games is None:
+        a.games = a.parallel
+    if a.games < a.parallel:
+        p.error(f"--games ({a.games}) must be >= --parallel ({a.parallel}): slots beyond the games would sit idle")
     if (a.first_turn_max_tokens is None) != (a.first_turn_retries is None):
         p.error("--first-turn-max-tokens and --first-turn-retries go together")
     if a.first_turn_max_tokens is not None and not 0 < a.first_turn_max_tokens < a.context_length:
         p.error("--first-turn-max-tokens must be positive and leave room for the prompt in --context-length")
     if a.first_turn_retries is not None and a.first_turn_retries < 0:
         p.error("--first-turn-retries must be >= 0")
-    if a.parallel > 1:
-        return fan_out(a.parallel, a.output, a.max_pieces)
+    if a.games > 1:
+        return fan_out(a.games, a.parallel, a.output, a.max_pieces)
     return play(a)
 
 

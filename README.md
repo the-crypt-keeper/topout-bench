@@ -37,11 +37,11 @@ break-even**: below it the stack climbs no matter how well it is packed.
 ## Play
 
     uv run topout-play.py --apibase http://localhost:8000/v1 --model NAME --output games/run1 \
-        --sampler sampler.json --seed 1 --lag-frames 12 --context-length 32768 --parallel 16
+        --sampler sampler.json --seed 1 --lag-frames 12 --context-length 32768 --games 32 --parallel 16
 
 `sampler.json` holds the chat-completions sampling fields sent with every request (`temperature`, `top_p`,
-`max_tokens`, `chat_template_kwargs`, ...). `--parallel N` plays N games of the seed at once, each in
-`OUTPUT/<i>/`. Each game writes `journal.jsonl`: a `run` record, one `tick` per button press (the board and
+`max_tokens`, `chat_template_kwargs`, ...). `--games N` plays N games of the seed, each in `OUTPUT/<i>/`, at
+most `--parallel P` at once: as one game ends the next starts (`--games` defaults to `--parallel`). Each game writes `journal.jsonl`: a `run` record, one `tick` per button press (the board and
 text shown, the action, its frames and per-frame inputs, and on a reply's first tick its reasoning, content,
 tool calls and usage), and a `summary`. The seed and the inputs replay the game exactly.
 

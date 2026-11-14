@@ -68,6 +68,38 @@ def test_parallel_counts_each_game_when_it_exits(fake_engine, tmp_path):
     assert all((tmp_path / "g" / str(i) / "journal.jsonl").exists() for i in range(3))
 
 
+def test_games_beyond_parallel_queue_and_all_play(fake_engine, tmp_path):
+    """--games 5 --parallel 2: never more than 2 games running, each next game starting as one ends, all 5 played."""
+    sampler = tmp_path / "s.json"
+    sampler.write_text('{"max_tokens": 100}')
+    argv = [sys.executable, str(ROOT / "topout-play.py"), "--apibase", fake_engine(), "--model", "fake",
+            "--output", str(tmp_path / "g"), "--sampler", str(sampler), "--seed", "1", "--lag-frames", "12",
+            "--context-length", "100000", "--max-pieces", "2", "--games", "5", "--parallel", "2"]
+    r = subprocess.run(argv, capture_output=True, text=True, timeout=300, cwd=ROOT)
+    assert r.returncode == 0, r.stdout[-2000:]
+    running, peak, order = 0, 0, []
+    for line in r.stdout.splitlines():                 # started / exited are printed under the pool's lock, in order
+        if line.endswith("] started"):
+            running += 1
+            order.append(line.split()[0])
+        elif " exited " in line:
+            running -= 1
+        peak = max(peak, running)
+    assert peak == 2, r.stdout[-2000:]
+    assert order == [f"[g{i}]" for i in range(5)]
+    last = [line for line in r.stdout.splitlines() if line.startswith("[") and "/10]" in line][-1]
+    assert last.startswith("[10/10]") and "running=0 queued=0" in last, last
+    assert all((tmp_path / "g" / str(i) / "journal.jsonl").exists() for i in range(5))
+
+
+def test_games_below_parallel_is_refused(tmp_path):
+    r = subprocess.run([sys.executable, str(ROOT / "topout-play.py"), "--apibase", "http://x/v1", "--model", "fake",
+                        "--output", str(tmp_path / "g"), "--sampler", str(tmp_path / "s.json"), "--seed", "1",
+                        "--lag-frames", "12", "--context-length", "100000", "--games", "2", "--parallel", "3"],
+                       capture_output=True, text=True, timeout=60, cwd=ROOT)
+    assert r.returncode != 0 and "--games (2) must be >= --parallel (3)" in r.stderr
+
+
 def test_first_turn_takes_its_own_cap_and_retries(fake_engine, tmp_path):
     """--first-turn-max-tokens / --first-turn-retries: a request on a fresh conversation (conv_turn 0) is sent
     with the first-turn cap and given up after 1 + first-turn-retries attempts; every later turn keeps the
