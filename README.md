@@ -51,6 +51,7 @@ tool calls and usage), and a `summary`. The seed and the inputs replay the game 
     uv run topout-regions.py games/run1 -o regions.png --csv regions.csv
     uv run topout-placements.py regions.csv                        # per-placement rates, per model
     uv run topout-outcomes.py --arm run1=games/run1 -o outcomes.png
+    uv run topout-replies.py --arm run1=games/run1                 # reply lengths: a piece's first reply vs the rest
 
 - **topout-regions**: per piece, the board split into filled / open / sealed cells, classic covered holes,
   and the ledger terms.
