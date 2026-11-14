@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def fake_engine():
     """Yield a function that configures the engine and returns its base URL; shut down at teardown."""
     state = {"rng": random.Random(0), "length_rate": 0.0, "no_call_rate": 0.0, "context": None, "clamp": False,
-             "served": 0}
+             "served": 0, "thinking": "kept"}
 
     class H(BaseHTTPRequestHandler):
         def do_POST(self):
@@ -32,7 +32,7 @@ def fake_engine():
                 refused = fe.refusal(body, state["context"])
                 status, payload = (400, refused) if refused else (200, None)
             if payload is None:
-                payload = fe.reply(body, state["rng"], state["length_rate"], state["no_call_rate"])
+                payload = fe.reply(body, state["rng"], state["length_rate"], state["no_call_rate"], state["thinking"])
             if status == 200:
                 state["served"] += 1                         # a reply returned: the oracle for counting replies
             data = json.dumps(payload).encode()
@@ -50,9 +50,9 @@ def fake_engine():
     thread.start()
 
     def configure(length_rate: float = 0.0, seed: int = 0, context: int | None = None,
-                  no_call_rate: float = 0.0, clamp: bool = False) -> str:
+                  no_call_rate: float = 0.0, clamp: bool = False, thinking: str = "kept") -> str:
         state.update(rng=random.Random(seed), length_rate=length_rate, context=context, no_call_rate=no_call_rate,
-                     clamp=clamp, served=0)
+                     clamp=clamp, served=0, thinking=thinking)
         return f"http://127.0.0.1:{server.server_address[1]}/v1"
 
     configure.served = lambda: state["served"]

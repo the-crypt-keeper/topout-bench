@@ -4,7 +4,11 @@ POST /v1/chat/completions answers at once with one tool call: start() first in a
 then a random verb. usage counts the prompt by characters / 4 so the player's carry checks have numbers
 to read. length_rate cuts a share of replies off at max_tokens (finish_reason "length"); no_call_rate
 answers a share with no tool call; context refuses a request whose prompt + max_tokens passes it, in
-vLLM's words. It plays nothing well and measures nothing about a model: a harness check only.
+vLLM's words. thinking picks how the prompt counts the conversation's thinking: "kept" (every message as sent),
+"last_user" (a template that renders thinking only after the last user turn, so a nudge's user turn drops the piece's
+earlier thinking and the prompt shrinks; replies then think at length so the drop shows), or "forget" (an engine that
+renders only the first message: history lost). It plays nothing well and measures nothing about a model: a harness
+check only.
 """
 from __future__ import annotations
 
@@ -12,6 +16,18 @@ import json
 import random
 
 VERBS = ["left", "right", "rotate", "drop", "wait"]
+LONG_THINKING = "fake thinking " * 100
+
+
+def prompt_tokens(body: dict, thinking: str = "kept") -> int:
+    msgs = body.get("messages", [])
+    if thinking == "forget":
+        msgs = msgs[:1]
+    elif thinking == "last_user":
+        last = max((i for i, m in enumerate(msgs) if m.get("role") == "user"), default=0)
+        msgs = [{k: v for k, v in m.items() if k != "reasoning_content"} if i < last and m.get("role") == "assistant"
+                else m for i, m in enumerate(msgs)]
+    return sum(len(json.dumps(m)) for m in msgs) // 4
 
 
 def refusal(body: dict, context: int | None) -> dict | None:
@@ -50,8 +66,9 @@ def clamped(body: dict, context: int) -> tuple[int, dict] | None:
                  "usage": {"prompt_tokens": prompt, "completion_tokens": room, "total_tokens": context}}
 
 
-def reply(body: dict, rng: random.Random, length_rate: float = 0.0, no_call_rate: float = 0.0) -> dict:
-    prompt = sum(len(json.dumps(m)) for m in body.get("messages", [])) // 4
+def reply(body: dict, rng: random.Random, length_rate: float = 0.0, no_call_rate: float = 0.0,
+          thinking: str = "kept") -> dict:
+    prompt = prompt_tokens(body, thinking)
     if rng.random() < length_rate:      # a reply cut off by max_tokens: thinking only, no answer
         cap = body.get("max_tokens") or 1024
         return {"id": "fake", "object": "chat.completion", "model": body.get("model"),
@@ -59,7 +76,8 @@ def reply(body: dict, rng: random.Random, length_rate: float = 0.0, no_call_rate
                                                      "reasoning_content": "fake runaway"},
                              "finish_reason": "length"}],
                 "usage": {"prompt_tokens": prompt, "completion_tokens": cap, "total_tokens": prompt + cap}}
-    msg: dict = {"role": "assistant", "content": None, "reasoning_content": "fake"}
+    msg: dict = {"role": "assistant", "content": None,
+                 "reasoning_content": LONG_THINKING if thinking == "last_user" else "fake"}
     finish = "stop"
     started = any(m.get("role") == "tool" for m in body.get("messages", []))
     if started and rng.random() < no_call_rate:   # a reply with no tool call: the player nudges

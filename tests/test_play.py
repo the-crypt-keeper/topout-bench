@@ -56,6 +56,32 @@ def test_no_tool_call_presses_wait_then_a_user_turn(fake_engine, tmp_path):
     assert r.stdout.count("NUDGE:") == n["nudges"] and "ERROR" not in r.stdout
 
 
+def test_retry_after_a_nudge_is_not_lost_history(fake_engine, tmp_path):
+    """A last-user-turn template drops the piece's thinking at a nudge's user turn, so the next prompt shrinks: the
+    model's own exit, not lost history. When that next reply is cut off, its retry is the identical request and still
+    follows the nudge (1728 game 8, reply 190, logged ERROR: history not carried)."""
+    found = False
+    for seed in range(40):
+        r, rows = play(fake_engine(no_call_rate=0.5, length_rate=0.5, seed=seed, thinking="last_user"),
+                       tmp_path / f"g{seed}", pieces=4)
+        assert r.returncode == 0, r.stdout[-2000:]
+        assert "history not carried" not in r.stdout, (seed, r.stdout[-3000:])
+        replies = [x for x in rows if "usage" in x and "conv_turn" in x]
+        for a, b, c in zip(replies, replies[1:], replies[2:]):
+            if (a.get("parse_error") == "no tool call" and b.get("kind") == "capped" and c["conv_turn"] == b["conv_turn"]
+                    and b["carry_check"]["grew"] < 0):
+                found = True
+        if found:
+            break
+    assert found, "no nudge -> shrunk prompt -> capped -> retry sequence was played"
+
+
+def test_lost_history_is_an_error(fake_engine, tmp_path):
+    """An engine that renders only the first message: the prompt stops growing, and the player says so."""
+    r, _ = play(fake_engine(thinking="forget"), tmp_path / "g", pieces=2)
+    assert "ERROR: history not carried" in r.stdout
+
+
 def test_parallel_counts_each_game_when_it_exits(fake_engine, tmp_path):
     """--parallel: every game reports its exit, and the last progress line counts all of them."""
     sampler = tmp_path / "s.json"

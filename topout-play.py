@@ -174,7 +174,6 @@ def play(a) -> int:
             carry = {"grew": pt - conv_last[0], "last_completion": conv_last[1], "after_nudge": nudged}
             if carry["grew"] <= 0 and not nudged:
                 print(f"ERROR: history not carried at reply {replies}: prompt grew {carry['grew']}", flush=True)
-        nudged = False
         reply = {"reply": replies, "conv_turn": conv_turn, "conv_reset": reset, "carry_check": carry,
                  "max_tokens": body.get("max_tokens"),
                  "content": msg.get("content"), "reasoning": reasoning, "usage": usage, "call_ms": ms,
@@ -218,6 +217,7 @@ def play(a) -> int:
             continue
         capped_streak = 0
         conv_last = (pt, ct)
+        nudged = False             # only an accepted reply moves on from a nudge: a cut-off retry repeats its request
         if not calls:              # no tool call: wait is pressed and the model is told so in a user turn
             nudged = True
             rec = {"kind": "tick", "tick": tick, **game.info(), **reply, "board": game.board_text(), "text": seen,
