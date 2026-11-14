@@ -2,12 +2,15 @@
 
     python topout-replies.py --arm NAME=PATH[,PATH...] [--arm ...]
 
-An arm is one or more journals, game directories or directories of games (running games included: every reply
-journalled so far counts). A reply is every record carrying `usage`: a reply's first tick, a `reply` that pressed
-nothing and a `capped` one cut off, since each was generated. Each piece is one conversation, so its first reply
-(conv_turn 0) is where the placement is planned, and the rest mostly press the next button; pooling the two hides the
-planning under the presses. Per arm and per split: replies, then completion tokens and reasoning characters at
-p10 / p50 / p90 / max. No means: one reply in a thousand can carry more tokens than the rest together.
+Contract. Reads journals (running games up to their last record); an arm is one or more journals, game directories or
+directories of games. Writes nothing; prints one row per arm and split. Never pools a piece's first reply with the
+rest.
+
+A reply is every generated reply, once (topout/calls.py is_reply): pressing, nudged and cut off alike. Each piece is
+one conversation, so its first reply (conv_turn 0) is where the placement is planned, and the rest mostly press the
+next button; pooling the two hides the planning under the presses. Per arm and per split: replies, then completion
+tokens and reasoning characters at p10 / p50 / p90 / max. No means: one reply in a thousand can carry more tokens than
+the rest together.
 """
 from __future__ import annotations
 
@@ -15,6 +18,7 @@ import argparse
 import json
 
 from topout import journals
+from topout.calls import is_reply
 
 PCTS = (0.1, 0.5, 0.9)
 
@@ -26,7 +30,7 @@ def replies(paths) -> dict[str, list[tuple[int, int]]]:
         with j.open() as f:
             for line in f:
                 r = json.loads(line)
-                if "usage" not in r or "conv_turn" not in r:
+                if not is_reply(r):
                     continue
                 out["first" if r["conv_turn"] == 0 else "later"].append(
                     (int((r["usage"] or {}).get("completion_tokens") or 0), len(r.get("reasoning") or "")))

@@ -41,27 +41,35 @@ break-even**: below it the stack climbs no matter how well it is packed.
 
 `sampler.json` holds the chat-completions sampling fields sent with every request (`temperature`, `top_p`,
 `max_tokens`, `chat_template_kwargs`, ...). `--games N` plays N games of the seed, each in `OUTPUT/<i>/`, at
-most `--parallel P` at once: as one game ends the next starts (`--games` defaults to `--parallel`). Each game writes `journal.jsonl`: a `run` record, one `tick` per button press (the board and
-text shown, the action, its frames and per-frame inputs, and on a reply's first tick its reasoning, content,
-tool calls and usage), and a `summary`. The seed and the inputs replay the game exactly.
+most `--parallel P` at once: as one game ends the next starts (`--games` defaults to `--parallel`). Each game
+writes `journal.jsonl`: a `run` record, one `tick` per button press (the board and text shown, the action, its
+frames and per-frame inputs, and on a reply's first tick its reasoning, content, tool calls and usage), `capped`
+and `reply` records for replies that pressed nothing, and a `summary` of how the game ended. The seed and the
+inputs replay the game exactly. The player computes no statistics: everything below reads the journals.
 
 ## Replay and analyse
 
+Every analysis takes arms as `--arm NAME=PATH[,PATH...]` (a journal, a game directory or a directory of games),
+reads only journals, and writes only what its `-o` / `--csv` names.
+
     uv run topout-video.py games/run1 -o run1.mp4                  # every game side by side, in game time
     uv run topout-regions.py games/run1 -o regions.png --csv regions.csv
-    uv run topout-placements.py regions.csv                        # per-placement rates, per model
+    uv run topout-placements.py --arm run1=games/run1              # per-placement rates, game-bootstrap intervals
     uv run topout-outcomes.py --arm run1=games/run1 -o outcomes.png
     uv run topout-replies.py --arm run1=games/run1                 # reply lengths: a piece's first reply vs the rest
+    uv run topout-conduct.py --arm run1=games/run1                 # per game: nudges, caps, refusals, calls per reply
 
 - **topout-regions**: per piece, the board split into filled / open / sealed cells, classic covered holes,
-  and the ledger terms.
-- **topout-placements**: each placement as a ledger event (sealing, dig-outs, lines); per-model rates with
+  and the ledger terms (defined in `topout/ledger.py`).
+- **topout-placements**: each placement as a ledger event (sealing, dig-outs, lines); per-arm rates with
   95% intervals from a bootstrap over whole games.
 - **topout-outcomes**: the distributions of lines cleared and pieces placed per arm.
+- **topout-replies**: completion tokens and reasoning per reply, a piece's first reply apart from the rest.
+- **topout-conduct**: how the model handled the harness, counted from the records.
 
 ## Tests
 
     uv run pytest
 
-The tests play short games against a fake engine (no GPU) and hold the instruction text and tools to a
-recorded game, so new games stay comparable with old ones.
+The tests play short games against a fake engine (no GPU) and hold the instruction text, the board text and the
+tools to a recorded game, so new games stay comparable with old ones.

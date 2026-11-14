@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 @pytest.fixture
 def fake_engine():
     """Yield a function that configures the engine and returns its base URL; shut down at teardown."""
-    state = {"rng": random.Random(0), "length_rate": 0.0, "no_call_rate": 0.0, "context": None, "clamp": False}
+    state = {"rng": random.Random(0), "length_rate": 0.0, "no_call_rate": 0.0, "context": None, "clamp": False,
+             "served": 0}
 
     class H(BaseHTTPRequestHandler):
         def do_POST(self):
@@ -32,6 +33,8 @@ def fake_engine():
                 status, payload = (400, refused) if refused else (200, None)
             if payload is None:
                 payload = fe.reply(body, state["rng"], state["length_rate"], state["no_call_rate"])
+            if status == 200:
+                state["served"] += 1                         # a reply returned: the oracle for counting replies
             data = json.dumps(payload).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -49,12 +52,22 @@ def fake_engine():
     def configure(length_rate: float = 0.0, seed: int = 0, context: int | None = None,
                   no_call_rate: float = 0.0, clamp: bool = False) -> str:
         state.update(rng=random.Random(seed), length_rate=length_rate, context=context, no_call_rate=no_call_rate,
-                     clamp=clamp)
+                     clamp=clamp, served=0)
         return f"http://127.0.0.1:{server.server_address[1]}/v1"
 
+    configure.served = lambda: state["served"]
     yield configure
     server.shutdown()
     server.server_close()
+
+
+def script(name: str):
+    """A topout-*.py script loaded as a module (its name has dashes, so it cannot be imported)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), ROOT / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def play(apibase: str, out: Path, extra: list[str] = (), pieces: int = 3, max_tokens: int = 100,

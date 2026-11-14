@@ -1,5 +1,11 @@
 """topout-play: an LLM plays NES Tetris (tetris100) through tool calls, one tool per button.
 
+Contract. Plays: talks to one OpenAI-compatible endpoint, presses buttons, and writes OUTPUT/journal.jsonl (with
+--games, OUTPUT/<i>/journal.jsonl per game) and nothing else. The journal is the record of everything that happened;
+the player computes no statistic over it: its summary holds only how the game ended, and every count, rate or
+distribution is analysis (topout-conduct, topout-replies, topout-regions, ...). Prints live events for whoever
+watches: one progress line per press, and NUDGE: / CAPPED: / LOST: / RESET: / ERROR: lines.
+
 The decisions are the tools: start() left() right() rotate() drop() wait(), against any OpenAI-compatible
 chat completions endpoint that parses tool calls. The game, its timing and the v1 instructions are
 topout's (topout/game.py, topout/prompt.py):
@@ -15,7 +21,7 @@ topout's (topout/game.py, topout/prompt.py):
   pressed; a button before start, or start once running, is refused and costs nothing.
 - A reply with no tool call is not asked again: wait is pressed, and the reply stays in the conversation
   followed by a user turn saying so (the only valid next message). A last-user-turn template stops
-  rendering the thinking before it; that is the model's own exit. The summary counts these as "nudges".
+  rendering the thinking before it; that is the model's own exit (a "nudge").
 - A reply cut off by max_tokens (finish_reason "length") is not the model's decision: it is never looped
   back and never nudged. The identical request is sent again up to CAPPED_RETRIES times; if every attempt
   is cut off, wait is pressed (a lost decision) and the piece's trajectory is rebooted: a fresh paused
@@ -32,19 +38,19 @@ and its clear has played out, or at a top-out.
 Journal (journal.jsonl): a "run" record, one "tick" per executed press (the board and text shown before it,
 the action, frames and the per-frame "inputs"), the reply's usage / reasoning / content / tool_calls on
 its first tick, "capped" records for cut-off replies, "reply" records for replies that pressed nothing, and
-a "summary". The seed and the inputs replay the game exactly (topout-video.py).
+a "summary": how the game ended (termination, pieces, lines, score, frames). The seed and the inputs replay the game
+exactly (topout-video.py).
 
 Prints one "[pieces/max_pieces]" line per press; errors are lines containing "ERROR:". CAPPED:, LOST:,
 NUDGE: and RESET: are the model's or the engine's behaviour, measured, not errors.
 
 Usage:
     python topout-play.py --apibase URL/v1 --model NAME --output DIR --sampler FILE
-                          --seed N --lag-frames N --context-length N [--max-pieces 100] [--parallel N]
+                          --seed N --lag-frames N --context-length N [--max-pieces 100] [--games N] [--parallel P]
 """
 from __future__ import annotations
 
 import argparse
-import collections
 import json
 import sys
 import time
@@ -53,8 +59,9 @@ from pathlib import Path
 import requests
 
 from topout import game as tg
+from topout.calls import button_of, call_text
 from topout.parallel import fan_out
-from topout.prompt import BUTTONS, INSTRUCTIONS, NUDGE, TOOLS
+from topout.prompt import BUTTONS, INSTRUCTIONS, NUDGE, TOOLS, state_text
 
 CAPPED_RETRIES = 3
 
@@ -81,29 +88,6 @@ def context_overflow(r: requests.Response) -> bool:
     return any(phrase in text for phrase in CONTEXT_OVERFLOW)
 
 
-def button_of(call: dict) -> tuple[str | None, str | None]:
-    """The button a call presses, or None and why (a refusal the model is told about)."""
-    name = (call.get("function") or {}).get("name")
-    return (name, None) if name in BUTTONS else (None, f"no button named {name!r}")
-
-
-def extra_args(call: dict) -> dict:
-    """Arguments a verb was given (it declares none): ignored in play, counted."""
-    raw = (call.get("function") or {}).get("arguments")
-    try:
-        args = json.loads(raw) if isinstance(raw, str) else (raw or {})
-    except json.JSONDecodeError:
-        return {"<not JSON>": raw}
-    if not isinstance(args, dict):
-        return {"<not an object>": args}
-    return args
-
-
-def call_text(call: dict) -> str:
-    extra = extra_args(call)
-    return f"{(call.get('function') or {}).get('name')}({', '.join(f'{k}={v}' for k, v in extra.items())})"
-
-
 def play(a) -> int:
     out = Path(a.output)
     out.mkdir(parents=True, exist_ok=True)
@@ -126,13 +110,10 @@ def play(a) -> int:
                               "first_turn_max_tokens": a.first_turn_max_tokens,
                               "first_turn_retries": a.first_turn_retries,
                               "tools": TOOLS, "context_length": a.context_length,
-                              "sampler": sampler}) + "\n")
-    counts = collections.Counter()
-    decisions = nudges = replies = extra = 0
-    per_reply, repeats, refused, unpressed, pressless = collections.Counter(), 0, 0, 0, 0
+                              "sampler": sampler, "sampler_name": Path(a.sampler).stem}) + "\n")
+    decisions = replies = capped_streak = 0       # numbered in the live lines and the records; never summarised
     conv: list = []
     conv_piece, conv_last, running, nudged = None, None, False, False
-    capped = lost = capped_streak = 0
     reboot = None                 # "capped" / "context": start the piece's conversation over on the next request
     tick = 0
     while not game.game_over:
@@ -154,7 +135,7 @@ def play(a) -> int:
         elif reboot:
             reset = reboot
         if reset:   # a fresh paused user turn on the board as it is now
-            text = f"{tg.state_text(game.board_text(), info)}\n\n{INSTRUCTIONS}"
+            text = f"{state_text(game.board_text(), info)}\n\n{INSTRUCTIONS}"
             conv = [{"role": "user", "content": [{"type": "text", "text": text}]}]
             conv_piece, conv_last, running, seen = info["pieces"], None, False, text
         reboot = None
@@ -213,7 +194,6 @@ def play(a) -> int:
             continue
         if reply["finish_reason"] == "length":       # cut off by max_tokens: not looped back, not nudged
             reply["reason"] = "max_tokens"
-            capped += 1
             capped_streak += 1
             journal.write(json.dumps({"kind": "capped", **reply, "attempt": capped_streak,
                                       "pieces": info["pieces"]}) + "\n")
@@ -222,7 +202,7 @@ def play(a) -> int:
                   f"{capped_retries + 1}, piece {info['pieces']})", flush=True)
             if capped_streak <= capped_retries:
                 continue                             # the identical request again
-            capped_streak, lost = 0, lost + 1
+            capped_streak = 0
             rec = {"kind": "tick", "tick": tick, **game.info(), **reply, "board": game.board_text(), "text": seen,
                    "action": "wait", "parse_error": "capped", "plan": None, "call": 0, "calls": 0}
             rec["frames"] = tg.apply(game, "wait", a.lag_frames, a.max_frames_per_tick)
@@ -230,7 +210,6 @@ def play(a) -> int:
             journal.write(json.dumps(rec) + "\n")
             journal.flush()
             decisions += 1
-            counts["wait"] += 1
             tick += 1
             reboot = "capped"
             print(f"LOST: decision {decisions}: {capped_retries + 1} attempts cut off; wait pressed, trajectory rebooted",
@@ -240,7 +219,6 @@ def play(a) -> int:
         capped_streak = 0
         conv_last = (pt, ct)
         if not calls:              # no tool call: wait is pressed and the model is told so in a user turn
-            nudges += 1
             nudged = True
             rec = {"kind": "tick", "tick": tick, **game.info(), **reply, "board": game.board_text(), "text": seen,
                    "action": "wait", "parse_error": "no tool call", "plan": None, "call": 0, "calls": 0}
@@ -249,10 +227,9 @@ def play(a) -> int:
             journal.write(json.dumps(rec) + "\n")
             journal.flush()
             decisions += 1
-            counts["wait"] += 1
             tick += 1
             running = True
-            board = (tg.state_text(game.board_text(), game.info()) if game.piece_in_play
+            board = (state_text(game.board_text(), game.info()) if game.piece_in_play
                      else "The piece locked.")
             seen = f"{NUDGE}\n\n{board}"
             conv += [{"role": "assistant", "content": msg.get("content") or "", "reasoning_content": reasoning or ""},
@@ -263,28 +240,19 @@ def play(a) -> int:
         conv.append({"role": "assistant", "content": msg.get("content") or "",
                      "reasoning_content": reasoning or "", "tool_calls": calls})
         plan = " ".join(call_text(c) for c in calls)
-        extra += sum(1 for c in calls if extra_args(c))
-        names = [button_of(c)[0] for c in calls]
-        repeats += sum(1 for x, y in zip(names, names[1:]) if x is not None and x == y)
-        per_reply[len(calls)] += 1
         pressed, piece = 0, info["pieces"]
         for i, c in enumerate(calls):
             button, why = button_of(c)
             if game.game_over or not game.piece_in_play or game.info()["pieces"] != piece:
                 result, button = "Not pressed: the piece has already locked.", None
-                unpressed += 1
             elif why:
                 result, button = f"Not pressed: {why}.", None
-                refused += 1
             elif button == "start":
                 result = ("The game is already running." if running else
-                          f"Resumed.\n\n{tg.state_text(game.board_text(), game.info())}")
-                if running:
-                    refused += 1
+                          f"Resumed.\n\n{state_text(game.board_text(), game.info())}")
                 running = True
             elif not running:
                 result, button = "Not pressed: the game is paused; press start first.", None
-                refused += 1
             else:
                 start, before = len(game.inputs), game.info()
                 rec = {"kind": "tick", "tick": tick, **before, **(reply if pressed == 0 else {}),
@@ -297,31 +265,23 @@ def play(a) -> int:
                 journal.flush()
                 pressed += 1
                 decisions += 1
-                counts[button] += 1
                 tick += 1
                 print(f"[{rec['pieces']}/{a.max_pieces}] {button} lines={rec['lines']} decision={decisions}",
                       flush=True)
                 if game.piece_in_play:
-                    result = f"Pressed {button}.\n\n{tg.state_text(game.board_text(), game.info())}"
+                    result = f"Pressed {button}.\n\n{state_text(game.board_text(), game.info())}"
                 else:
                     result = f"Pressed {button}. The piece locked."
             conv.append({"role": "tool", "tool_call_id": c.get("id"), "content": result})
             seen = result
         if not pressed:
-            pressless += 1
             journal.write(json.dumps({"kind": "reply", **reply, "plan": plan, "pieces": piece}) + "\n")
             journal.flush()
     end = game.info()
-    summary = {"kind": "summary", "ticks": tick, "decisions": decisions, "parse_failures": nudges,
-               "nudges": nudges, "seed": a.seed, "lag_frames": a.lag_frames,
-               "actions": dict(counts), "lines": end["lines"], "score": end["score"],
-               "pieces": end["pieces"] if game.game_over else a.max_pieces,
-               "frames": len(game.inputs),
-               "game_over": game.game_over, "termination": "game_over" if game.game_over else "max_pieces",
-               "decision": "verbs", "replies": replies, "calls_per_reply": dict(sorted(per_reply.items())),
-               "repeated_calls": repeats, "refused_calls": refused, "unpressed_after_lock": unpressed,
-               "pressless_replies": pressless, "calls_with_extra_arguments": extra,
-               "capped_replies": capped, "lost_decisions": lost}
+    # how the game ended, which only the player knows; every count over the records is analysis (topout-conduct)
+    summary = {"kind": "summary", "termination": "game_over" if game.game_over else "max_pieces",
+               "game_over": game.game_over, "pieces": end["pieces"] if game.game_over else a.max_pieces,
+               "lines": end["lines"], "score": end["score"], "frames": len(game.inputs)}
     journal.write(json.dumps(summary) + "\n")
     journal.close()
     print(json.dumps(summary))

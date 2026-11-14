@@ -1,6 +1,11 @@
 """topout-video: topout games replayed through the emulator, in game time, side by side.
 
-    python topout-video.py <game dir | journal | dir of games> [...] [-o out.mp4] [--every 4] [--fps 30]
+    python topout-video.py <game dir | journal | dir of games> [...] -o out.mp4 [--every 4] [--fps 30]
+
+Contract. Reads journals: the run record (seed, model, sampler name), the ticks, and the summary only for how a
+finished game ended. Writes the one mp4 named by -o and nothing else: never into a game directory. Refuses to render a
+game whose replay diverges from its journal. It shows what the journal holds; it computes no statistic. Needs ffmpeg
+on PATH.
 
 The games are played back, not stitched from saved frames: every tick's per-frame buttons (the journal's
 "inputs") are pressed into a fresh emulator from the journal's seed, and every tick is checked against the
@@ -14,8 +19,8 @@ game time (newest at the right, 3 px a frame): the buttons, each placed at the f
 under each a bar of the tokens that decision burned (grey < 12k, blue 12-24k, purple 24-48k, red >= 48k;
 full height at 48k). Tokens, not seconds: a faster GPU thinks faster, the tokens are the model's. Below:
 the piece, lines, the current decision and its plan, or for a decision with no plan its parse error and
-the last words of its thinking. Labels come from each journal's run record (model, seed, reasoning effort).
-Default output: one game, <game>/game.mp4; several games need -o. Needs ffmpeg on PATH.
+the last words of its thinking. Labels come from each journal's run record: model, sampler (the name of the sampler
+file the game was played with, when recorded), seed, and the game's index.
 """
 from __future__ import annotations
 
@@ -65,12 +70,9 @@ class Arm:
                      f"(mode {self.run.get('mode')!r}, decision {self.run.get('decision')!r})")
         self.ticks = [r for r in recs if r.get("kind") == "tick"]
         self.summary = next((r for r in recs if r.get("kind") == "summary"), None)
-        sampler = self.run.get("sampler") or {}
-        kwargs = sampler.get("chat_template_kwargs") or {}
-        effort = (sampler.get("reasoning_effort") or kwargs.get("reasoning_effort")
-                  or kwargs.get("reasoning_strength"))   # gpt-oss top level; Qwen / Muse-Glimmer in the template
         game_no = f"game {self.game_dir.name}" if self.game_dir.name.isdigit() else None
-        self.label = " · ".join(str(x) for x in (self.run.get("model"), f"seed {self.run.get('seed')}", effort, game_no) if x)
+        self.label = " · ".join(str(x) for x in (self.run.get("model"), self.run.get("sampler_name"),
+                                                  f"seed {self.run.get('seed')}", game_no) if x)
         self.inputs, self.decisions = self._replay()
         self.total = len(self.decisions)
 
@@ -172,7 +174,7 @@ def fit(text: str, font, width: int) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("paths", nargs="+", help="game directories, journals or directories of games")
-    ap.add_argument("-o", "--output", help="output mp4")
+    ap.add_argument("-o", "--output", required=True, help="output mp4")
     ap.add_argument("--every", type=int, default=4, help="keep every Nth game frame (60.1 fps game)")
     ap.add_argument("--fps", type=int, default=30, help="the video's frame rate: fps * every / 60.1 is the speed-up")
     ap.add_argument("--wrap", type=int, default=4, help="screens per row; more games wrap onto further rows")
@@ -180,13 +182,7 @@ def main() -> int:
     if not shutil.which("ffmpeg"):
         sys.exit("topout-video: ffmpeg not on PATH")
 
-    games = journals.find(a.paths)
-    if a.output:
-        out = Path(a.output)
-    elif len(games) == 1:
-        out = games[0].parent / "game.mp4"
-    else:
-        sys.exit("topout-video: several games need -o")
+    games, out = journals.find(a.paths), Path(a.output)
     arms = [Arm(g) for g in games]
 
     font, small = ImageFont.truetype(FONT, 24), ImageFont.truetype(FONT, 17)

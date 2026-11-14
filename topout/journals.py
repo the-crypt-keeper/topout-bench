@@ -1,5 +1,7 @@
 """Finding journals and naming games, for the analysis scripts.
 
+Contract. Resolves paths and arms to journal files and reads a journal's run record; computes nothing over a game.
+
 A path is a journal.jsonl, a game directory holding one, a --parallel output holding <i>/journal.jsonl, or
 any directory, searched recursively. An arm is NAME=PATH[,PATH...]: its games pool together.
 """

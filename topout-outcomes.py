@@ -2,9 +2,9 @@
 
     python topout-outcomes.py --arm NAME=PATH[,PATH...] [--arm ...] [--ref NAME=PATH[,...]] -o outcomes.png
 
-An arm is one or more journals, game directories or directories of games. Each game's outcome is its
-journal's final summary record: pieces placed and lines cleared. Games without a summary (still running)
-are skipped and counted. One row per arm, plus a pooled row on top (every --arm, not --ref): the
+Contract. Reads each journal's summary record, its outcome fields only (pieces, lines), which every driver revision
+wrote alike; an arm is one or more journals, game directories or directories of games. Writes only the PNG named by
+-o. Games without a summary (still running) are skipped and counted. One row per arm, plus a pooled row on top (every --arm, not --ref): the
 histogram of lines cleared (one bar per value) and of pieces placed (2-piece bins), raw counts.
 
 Prints, per arm, the number of games at each lines-cleared value. No means, no medians: the histogram is

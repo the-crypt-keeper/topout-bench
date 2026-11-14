@@ -1,6 +1,9 @@
 """--games N --parallel P: N games of one seed against one engine, at most P at a time, each its own process and
 journal at DIR/<i>/.
 
+Contract. Schedules games and relays their output; reads no journal and computes nothing over the games beyond the
+progress line below.
+
 A pool: P games start at once, and whenever one ends the next index starts, until N have played. Long and short games
 then share the engine's slots instead of the short ones' slots idling until the longest game of a batch ends.
 

@@ -1,5 +1,9 @@
 """NES Tetris in the emulator, and the timing every press runs under.
 
+Contract. The game and nothing about the model: steps the emulator, reads its RAM, applies a button under the timing
+rules, and records the per-frame inputs. What the model is shown is topout/prompt.py's; what is journalled is
+topout-play's.
+
 Runs on gym-tetris (NES Tetris on nes-py, its bundled ROM). A Game steps the emulator one frame at a time
 and reads the board, the falling piece and the counters from RAM.
 
@@ -134,13 +138,6 @@ class Game:
             else:
                 runs.append([b, 1])
         return runs
-
-
-def state_text(board: str, rec: dict) -> str:
-    """Piece names are the shape letter, not gym-tetris's orientation codes."""
-    return (f"Board (10 columns x 20 rows, top row first):\n{board}\n\n"
-            f"Falling piece: {rec['piece'][0]}\nNext piece: {(rec['next_piece'] or '?')[0]}\n"
-            f"Lines cleared: {rec['lines']}\nScore: {rec['score']}")
 
 
 def settle(game: Game, frames: int, max_frames: int) -> int:

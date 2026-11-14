@@ -1,4 +1,7 @@
-"""The v1 instructions and the verb tools, byte for byte the text every v1 game was played under.
+"""What the model is shown: the v1 instructions, the board text and the verb tools, byte for byte the text every v1
+game was played under.
+
+Contract. Text and tool definitions only; no game logic, no I/O.
 
 v1 is the only text topout plays (operator 2026-11-13): no prompt variant beat it (threads/tetris-v5,
 2026-10-11). It is assembled exactly as the reasonlab harness assembled it (the chat text up to its
@@ -50,3 +53,11 @@ TOOLS = [{"type": "function", "function": {
     for name, desc in BUTTONS.items()]
 
 NUDGE = "Your reply had no tool call, so wait was pressed. Reply with tool calls only."
+
+
+def state_text(board: str, rec: dict) -> str:
+    """The board and counters as the model is shown them. Piece names are the shape letter, not gym-tetris's
+    orientation codes."""
+    return (f"Board (10 columns x 20 rows, top row first):\n{board}\n\n"
+            f"Falling piece: {rec['piece'][0]}\nNext piece: {(rec['next_piece'] or '?')[0]}\n"
+            f"Lines cleared: {rec['lines']}\nScore: {rec['score']}")
