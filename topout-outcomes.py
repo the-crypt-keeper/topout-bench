@@ -62,6 +62,9 @@ def main() -> int:
         print(f"{name:38s} {len(games):5d} {skipped:4d}   " + " ".join(str(int(v)) for v in counts))
         arms.append((name, games))
 
+    if not arms:
+        raise SystemExit("topout-outcomes: no finished game in any arm: nothing to plot")
+
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

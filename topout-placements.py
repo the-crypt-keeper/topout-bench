@@ -64,6 +64,8 @@ def main() -> None:
             g = journals.game_id(p)
             ev[g], lines_of[g] = ledger.placements(rows), rows[-1]["lines"]
             arms[name].append(g)
+    if not ev:
+        raise SystemExit("topout-placements: no game in any arm has a placement yet")
     order = sorted(ev, key=lambda g: -lines_of[g])
     width = max(len(g) for g in order)
 

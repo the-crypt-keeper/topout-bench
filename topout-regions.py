@@ -69,6 +69,8 @@ def main() -> None:
                     help="plot (v[p] - v[p-K]) / K, the trailing slope over K pieces, instead of v")
     a = ap.parse_args()
     games = [ledger.piece_rows(p) for p in journals.find(a.paths)]
+    if not any(games):
+        raise SystemExit("topout-regions: no game has a piece yet: nothing to plot")
     for rows in games:
         if not rows:
             continue
