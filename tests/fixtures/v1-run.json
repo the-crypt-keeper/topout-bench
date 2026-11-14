@@ -1,0 +1,79 @@
+{
+ "source": "reasonlab experiments/20261013-0628-mimo-v26-flash-mopd-...-x16, play-0 game 3: a recorded tool-verbs v1 run record (prompt v1, protocol tetris-v3)",
+ "instructions": "You are playing Tetris. The board is 10 columns wide and 20 rows tall, drawn top row first: '#' is a settled block, '@' is the falling piece, '.' is empty.\nGOAL: complete HORIZONTAL LINES. A line is one full row of the board: all 10 cells across, from the left wall to the right wall, filled with blocks. Every completed line disappears and scores. Completing several lines with one piece scores far more than one at a time; four lines at once is the best move in the game. The game ends when the blocks stack up to the top, so keep the stack low and flat with no holes.\nTo fill a row you must steer each piece sideways to where it fits: left and right move it one column, rotate turns it. The piece falls straight down on its own; drop only makes it fall faster and wait does nothing, so neither changes where it lands.\nThe game is paused on this piece: press start to resume it, then press buttons to move the piece toward the place where it completes the most horizontal lines. You may press several buttons in one reply: they run in order, one after another, each taking game time while the piece keeps falling, and each result is the board after that press. Every reply must be tool calls.",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "start",
+    "description": "Resume the paused game; the buttons do nothing until it is resumed.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "additionalProperties": false
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "left",
+    "description": "Move the falling piece one column to the left.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "additionalProperties": false
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "right",
+    "description": "Move the falling piece one column to the right.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "additionalProperties": false
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "rotate",
+    "description": "Rotate the falling piece a quarter turn clockwise.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "additionalProperties": false
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "drop",
+    "description": "Drop the falling piece up to 4 rows straight down (it stops early if it lands).",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "additionalProperties": false
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "wait",
+    "description": "Press nothing this tick; the piece keeps falling.",
+    "parameters": {
+     "type": "object",
+     "properties": {},
+     "additionalProperties": false
+    }
+   }
+  }
+ ],
+ "no_tool_call": "wait pressed, then a user turn: Your reply had no tool call, so wait was pressed. Reply with tool calls only."
+}

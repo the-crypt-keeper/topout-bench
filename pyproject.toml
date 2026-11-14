@@ -1,0 +1,23 @@
+[project]
+name = "topout-bench"
+version = "0.1.0"
+description = "LLMs playing NES Tetris through tool calls: play, replay and per-piece analysis"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "gym-tetris==4.0.0",
+    "nes-py==9.0.1",
+    "numpy",
+    "requests",
+    "pillow",
+    "matplotlib",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
