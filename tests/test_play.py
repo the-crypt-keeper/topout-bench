@@ -1,6 +1,7 @@
 """topout-play end to end against the fake engine."""
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 
@@ -85,6 +86,53 @@ def test_first_turn_takes_its_own_cap_and_retries(fake_engine, tmp_path):
     assert r0.returncode == 0
     assert rows0[0]["first_turn_max_tokens"] is None
     assert all(x["max_tokens"] == 100 for x in rows0 if "conv_turn" in x and "max_tokens" in x)
+
+
+def test_context_full_reply_resets_the_conversation(fake_engine, tmp_path):
+    """vLLM >= 0.32 clamps the output budget to the room left: a conversation that no longer fits comes back as a reply
+    cut off at prompt + completion = context, not as a 400. That is a full context, handled as the refusal is: journalled
+    as capped with reason "context", RESET: context, a fresh conversation, nothing pressed, not a lost decision."""
+    r, rows = play(fake_engine(context=3000, clamp=True), tmp_path / "g", pieces=4, context_length=3000)
+    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
+    assert "ERROR" not in r.stdout and "LOST:" not in r.stdout and "CAPPED:" not in r.stdout
+    full = [x for x in rows if x.get("kind") == "capped" and x.get("reason") == "context"]
+    assert full and r.stdout.count("RESET: context") == len(full)
+    assert all(x["usage"]["prompt_tokens"] + x["usage"]["completion_tokens"] == 3000 for x in full)
+    assert rows[-1]["capped_replies"] == 0 and rows[-1]["lost_decisions"] == 0
+    assert not any(x.get("parse_error") == "capped" for x in rows)     # no wait pressed for it
+    for i, x in enumerate(rows):                                      # the next request is a fresh conversation
+        if x.get("kind") == "capped" and x.get("reason") == "context":
+            nxt = next(y for y in rows[i + 1:] if "conv_turn" in y)
+            assert nxt["conv_turn"] == 0 and nxt.get("conv_reset") == "context", nxt
+
+
+def test_turn_cap_is_still_a_cap_on_a_clamping_engine(fake_engine, tmp_path):
+    """A reply cut off by its own max_tokens, with room left in the context, is the model's cap (reason max_tokens):
+    retried, then lost and rebooted, never a context reset."""
+    r, rows = play(fake_engine(length_rate=0.6, seed=0, context=100000, clamp=True), tmp_path / "g", pieces=4)
+    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
+    capped = [x for x in rows if x.get("kind") == "capped"]
+    assert capped and all(x["reason"] == "max_tokens" for x in capped)
+    assert "RESET: context" not in r.stdout and rows[-1]["capped_replies"] == len(capped)
+
+
+def test_context_overflow_matches_vllm_033_refusals():
+    """The 400s vLLM 0.33.0 still sends, copied from its source: renderers/params.py _token_len_check (a prompt that
+    alone passes the context) and serve/utils/api_utils.py get_max_tokens. Both must read as a context overflow."""
+    import importlib.util
+
+    import requests
+    spec = importlib.util.spec_from_file_location("topout_play", ROOT / "topout-play.py")
+    tp = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tp)
+    for message in ("This model's maximum context length is 131072 tokens. However, your prompt contains 131080 input "
+                    "tokens, which exceeds this limit even without any output tokens. Please reduce the length of the "
+                    "input prompt.",
+                    "Input length (131080) exceeds model's maximum context length (131072)."):
+        r = requests.Response()
+        r.status_code = 400
+        r._content = json.dumps({"error": {"message": message, "type": "BadRequestError", "code": 400}}).encode()
+        assert tp.context_overflow(r), message
 
 
 def test_engine_overflow_refusal_resets_the_conversation(fake_engine, tmp_path):

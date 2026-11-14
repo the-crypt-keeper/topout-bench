@@ -29,6 +29,27 @@ def refusal(body: dict, context: int | None) -> dict | None:
                       "type": "BadRequestError", "param": "input_tokens", "code": 400}}
 
 
+def clamped(body: dict, context: int) -> tuple[int, dict] | None:
+    """vLLM >= 0.32 (#57035): a prompt that alone passes the context is still a 400; a prompt that fits but leaves less
+    than max_tokens of room is not refused: the output budget is clamped to the room left, and this fake spends all of
+    it, so the reply is cut off with finish_reason "length" at prompt + completion = context. None when it fits."""
+    prompt = sum(len(json.dumps(m)) for m in body.get("messages", [])) // 4
+    if prompt > context:
+        return 400, {"error": {"message": f"This model's maximum context length is {context} tokens. However, your "
+                                          f"prompt contains {prompt} input tokens, which exceeds this limit even "
+                                          f"without any output tokens. Please reduce the length of the input prompt.",
+                               "type": "BadRequestError", "param": "input_tokens", "code": 400}}
+    out = body.get("max_tokens") or 1024
+    if prompt + out <= context:
+        return None
+    room = context - prompt
+    return 200, {"id": "fake", "object": "chat.completion", "model": body.get("model"),
+                 "choices": [{"index": 0, "message": {"role": "assistant", "content": None,
+                                                      "reasoning_content": "fake, out of context"},
+                              "finish_reason": "length"}],
+                 "usage": {"prompt_tokens": prompt, "completion_tokens": room, "total_tokens": context}}
+
+
 def reply(body: dict, rng: random.Random, length_rate: float = 0.0, no_call_rate: float = 0.0) -> dict:
     prompt = sum(len(json.dumps(m)) for m in body.get("messages", [])) // 4
     if rng.random() < length_rate:      # a reply cut off by max_tokens: thinking only, no answer

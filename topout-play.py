@@ -20,8 +20,11 @@ topout's (topout/game.py, topout/prompt.py):
   back and never nudged. The identical request is sent again up to CAPPED_RETRIES times; if every attempt
   is cut off, wait is pressed (a lost decision) and the piece's trajectory is rebooted: a fresh paused
   user turn on the board as it now is.
-- When the engine refuses a conversation as too long, the piece's conversation starts over (RESET:
-  context). The engine is the only judge of fit; nothing is predicted.
+- When a piece's conversation no longer fits the context, it starts over (RESET: context) on the board as it is,
+  nothing pressed. Engines say so two ways: a 400 refusing the request (SGLang, llama-server, vLLM < 0.32, and vLLM
+  when the prompt alone fills the context), or, on vLLM >= 0.32, which clamps the output budget to what the context has
+  left, a reply cut off with finish_reason "length" at prompt + completion = --context-length. Both are handled alike.
+  The engine is the only judge of fit; nothing is predicted.
 
 tetris100: the game is --max-pieces long, counted in pieces. It ends once piece --max-pieces has locked
 and its clear has played out, or at a top-out.
@@ -197,7 +200,21 @@ def play(a) -> int:
                  "max_tokens": body.get("max_tokens"),
                  "content": msg.get("content"), "reasoning": reasoning, "usage": usage, "call_ms": ms,
                  "finish_reason": resp["choices"][0].get("finish_reason"), "tool_calls": calls}
-        if reply["finish_reason"] == "length":       # cut off: not looped back, not nudged
+        if reply["finish_reason"] == "length" and conv_turn > 0 and pt + ct >= a.context_length:
+            # Cut off by the context, not by max_tokens: vLLM >= 0.32 clamps the output budget to what the context has
+            # left instead of refusing the request (#57035), so a conversation that no longer fits now ends here rather
+            # than in a 400. Handled exactly as that refusal was: the cut reply is journalled, nothing is pressed, and
+            # the piece's conversation starts over (not a lost decision; the game is where it was).
+            journal.write(json.dumps({"kind": "capped", **reply, "reason": "context", "attempt": 0,
+                                      "pieces": info["pieces"]}) + "\n")
+            journal.flush()
+            print(f"RESET: context at reply {replies}: piece {info['pieces']} conversation ({conv_turn} replies) "
+                  f"filled the context ({pt} + {ct} tokens); a fresh conversation", flush=True)
+            capped_streak = 0
+            reboot = "context"
+            continue
+        if reply["finish_reason"] == "length":       # cut off by max_tokens: not looped back, not nudged
+            reply["reason"] = "max_tokens"
             capped += 1
             capped_streak += 1
             journal.write(json.dumps({"kind": "capped", **reply, "attempt": capped_streak,
@@ -328,8 +345,8 @@ def main() -> int:
     p.add_argument("--lag-frames", type=int, required=True,
                    help="minimum game frames per button: the perception lag (12 = 200 ms)")
     p.add_argument("--context-length", type=int, required=True,
-                   help="the engine's context window (checks --first-turn-max-tokens); a piece's conversation is "
-                        "reset when the engine refuses it as too long")
+                   help="the engine's context window (max_model_len): a reply cut off at prompt + completion = this is "
+                        "a full context, not the model's cap; also checks --first-turn-max-tokens")
     p.add_argument("--max-pieces", type=int, default=100,
                    help="tetris100: the game ends once this piece has locked (and cleared), or at a top-out")
     p.add_argument("--max-frames-per-tick", type=int, default=1200,
