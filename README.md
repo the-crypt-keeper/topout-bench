@@ -55,7 +55,7 @@ reads only journals, and writes only what its `-o` / `--csv` names.
     uv run topout-video.py games/run1 -o run1.mp4                  # every game side by side, in game time
     uv run topout-regions.py games/run1 -o regions.png --csv regions.csv
     uv run topout-placements.py --arm run1=games/run1              # per-placement rates, game-bootstrap intervals
-    uv run topout-outcomes.py --arm run1=games/run1 -o outcomes.png
+    uv run topout-outcomes.py --arm run1=games/run1                # survival, then each set's final boards
     uv run topout-replies.py --arm run1=games/run1                 # reply lengths: a piece's first reply vs the rest
     uv run topout-conduct.py --arm run1=games/run1                 # per game: nudges, caps, refusals, calls per reply
 
@@ -63,7 +63,8 @@ reads only journals, and writes only what its `-o` / `--csv` names.
   and the ledger terms (defined in `topout/ledger.py`).
 - **topout-placements**: each placement as a ledger event (sealing, dig-outs, lines); per-arm rates with
   95% intervals from a bootstrap over whole games.
-- **topout-outcomes**: the distributions of lines cleared and pieces placed per arm.
+- **topout-outcomes**: survival n / N per arm, then every game's last board, survivors and topped-out games
+  never pooled: pieces placed, lines, lines per turn, filled and sealed cells.
 - **topout-replies**: completion tokens and reasoning per reply, a piece's first reply apart from the rest.
 - **topout-conduct**: how the model handled the harness, counted from the records.
 

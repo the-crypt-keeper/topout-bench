@@ -20,7 +20,7 @@ def test_a_just_started_game_is_nothing_yet_never_a_traceback(tmp_path):
     game.mkdir(parents=True)
     (game / "journal.jsonl").write_text(json.dumps(json.loads(RUN)) + "\n")
     arm = f"a={tmp_path / 'games'}"
-    refuse = {"topout-outcomes": ["--arm", arm, "-o", tmp_path / "o.png"],
+    refuse = {"topout-outcomes": ["--arm", arm],
               "topout-placements": ["--arm", arm],
               "topout-regions": [tmp_path / "games", "-o", tmp_path / "r.png", "--csv", tmp_path / "r.csv"]}
     for name, args in refuse.items():
@@ -30,3 +30,15 @@ def test_a_just_started_game_is_nothing_yet_never_a_traceback(tmp_path):
     for name in ("topout-replies", "topout-conduct"):
         r = _run(ROOT / f"{name}.py", "--arm", arm)
         assert r.returncode == 0 and "Traceback" not in r.stderr, (name, r.stderr)
+
+
+def test_outcomes_puts_a_survivor_in_the_survived_set_with_its_last_board(fake_engine, tmp_path):
+    from tests.conftest import play
+    (tmp_path / "games").mkdir()
+    r, rows = play(fake_engine(), tmp_path / "games" / "0", pieces=3)
+    assert r.returncode == 0 and rows[-1]["termination"] == "max_pieces"
+    out = _run(ROOT / "topout-outcomes.py", "--arm", f"a={tmp_path / 'games'}")
+    assert out.returncode == 0, out.stderr
+    assert "a: survived 1 / 1" in out.stdout and "topped out" not in out.stdout, out.stdout
+    game, lines, placed, per_turn, filled, sealed = out.stdout.strip().splitlines()[-1].split()
+    assert int(placed) == 2 and int(filled) == 4 * int(placed) - 10 * int(lines)       # piece 3's spawn board
