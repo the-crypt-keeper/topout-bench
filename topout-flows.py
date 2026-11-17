@@ -215,6 +215,17 @@ def plot_triangle(arms, out: Path, log: bool) -> None:
         style(ax)
         ax.grid(False)
         ax.plot([0, ROWS], [ROWS, 0], color=MUTED, linewidth=1, linestyle="--")
+        # each game's last state (its last clean spawn board: the occluded top-out board is not one), ringed by
+        # outcome and sized by how many games ended in that cell. A topped-out game ends when the next piece cannot
+        # spawn, which is often a tower under the spawn point well inside live + dead = 20.
+        from collections import Counter
+        for survived, marker, col in ((False, "o", TOPPED), (True, "s", INK)):
+            ends = Counter((last["live_rows"], last["dead_rows"]) for g in paths if g["survived"] == survived
+                           for last in [next((r for r in reversed(g["rows"]) if not r["occluded"]), None)] if last)
+            if ends:
+                xs, ys, ns = zip(*((x, y, k) for (x, y), k in ends.items()))
+                ax.scatter(xs, ys, s=[28 * k for k in ns], marker=marker, facecolors="none", edgecolors=col,
+                           linewidths=1.3, zorder=3)
         n, alive = len(paths), sum(g["survived"] for g in paths)
         top.set_title(f"{name}  ({alive} / {n} survived, {total} pieces)", loc="left", fontsize=9, color=INK)
         ax.set_xlabel("live rows", color=MUTED, fontsize=8)
@@ -225,7 +236,8 @@ def plot_triangle(arms, out: Path, log: bool) -> None:
         ax.set_visible(False)
     scale = "log colour, one range for all panels" if norm else "each panel its own range"
     fig.suptitle(f"share of the arm's pieces spawning into each (live, dead) state ({scale}); dashed: live + dead = 20;"
-                 f" bars: live rows (top) and dead rows (right) summed, one range for all panels",
+                 f" bars: live rows (top) and dead rows (right) summed, one range for all panels;\nmarkers: each game's"
+                 f" last clean board, circles topped out, squares survived, sized by games ending there",
                  color=MUTED, fontsize=9, x=0.01, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     if norm:
