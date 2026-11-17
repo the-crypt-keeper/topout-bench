@@ -1,7 +1,7 @@
 """The board at each piece's spawn, decomposed: filled / open / sealed regions and the height ledger.
 
 Reads a journal's tick records and nothing else (no summary: a running game reads up to its last tick). Computes;
-writes nothing. topout-regions plots and exports these rows, topout-placements turns them into placement events.
+writes nothing. topout-flows places these rows on the triangle, topout-placements turns them into placement events.
 
 Each journal carries the board the model was shown on every tick ('#' settled, '@' falling, '.' empty). The board at
 a piece's first tick is the settled field that piece spawned into: the previous lock and its clears, played out. Each

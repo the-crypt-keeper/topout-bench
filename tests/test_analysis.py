@@ -22,11 +22,11 @@ def test_a_just_started_game_is_nothing_yet_never_a_traceback(tmp_path):
     arm = f"a={tmp_path / 'games'}"
     refuse = {"topout-outcomes": ["--arm", arm],
               "topout-placements": ["--arm", arm],
-              "topout-regions": [tmp_path / "games", "-o", tmp_path / "r.png", "--csv", tmp_path / "r.csv"]}
+              "topout-flows": ["--arm", arm, "-o", tmp_path / "f.png"]}
     for name, args in refuse.items():
         r = _run(ROOT / f"{name}.py", *args)
         assert r.returncode != 0 and "Traceback" not in r.stderr and f"{name}: " in r.stderr, (name, r.stderr)
-    assert not any((tmp_path / f).exists() for f in ("o.png", "r.png", "r.csv"))
+    assert not any((tmp_path / f).exists() for f in ("o.png", "f.png"))
     for name in ("topout-replies", "topout-conduct"):
         r = _run(ROOT / f"{name}.py", "--arm", arm)
         assert r.returncode == 0 and "Traceback" not in r.stderr, (name, r.stderr)
