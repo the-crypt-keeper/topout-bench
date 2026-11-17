@@ -103,6 +103,15 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
     finite = np.concatenate([s[np.isfinite(s)] for s, _ in shares.values()])
     norm = LogNorm(vmin=finite.min(), vmax=finite.max())
     margins = {name: (np.nansum(s, axis=0), np.nansum(s, axis=1)) for name, (s, _) in shares.items()}
+    if view == "moves":
+        # most placements clear nothing and seal nothing: a piece brings 4 cells and a line takes 10, so at most ~40% of
+        # placements can clear at all. The bars leave out the zero bin and are shares among the placements that did
+        # something: the clear profile (1-4 lines) and the size of each change in sealed cells.
+        def nonzero(m, zero):
+            m = m.copy()
+            m[zero] = 0
+            return m / m.sum() if m.sum() else m
+        margins = {name: (nonzero(xm, 0 - x0), nonzero(ym, 0 - y0)) for name, (xm, ym) in margins.items()}
     mtop = max(max(xm.max(), ym.max()) for xm, ym in margins.values()) * 1.05
     cmap = ListedColormap(RAMP)
     cmap.set_bad(SURFACE)
@@ -157,7 +166,9 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
         ax.set_visible(False)
     ends = ("\nmarkers: each game's last clean board, circles topped out, squares survived, sized by games ending there"
             if v["last"] else "")
-    fig.suptitle(f"{CAPTIONS[view]}, log colour on one range for all panels; bars: the two axes summed, one range"
+    bars = ("\nbars: among placements that cleared, lines cleared (top); among placements that changed it, the change "
+            "in sealed cells (right); zero bins left out" if view == "moves" else "bars: the two axes summed, one range")
+    fig.suptitle(f"{CAPTIONS[view]}, log colour on one range for all panels; {bars}"
                  f"{ends}", color=MUTED, fontsize=9, x=0.01, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     cb = fig.colorbar(img, ax=axes.ravel().tolist(), fraction=0.015, pad=0.01)
