@@ -1,15 +1,17 @@
-"""topout-flows: where each arm's play lives on the triangle of empty, live and dead rows, and where its games ended.
+"""topout-flows: where each arm's play lives (the line-level triangle) and how each placement moves it (the cell-level map).
 
-    python topout-flows.py --arm NAME=PATH[,PATH...] [--arm ...] -o flows.png
+    python topout-flows.py --arm NAME=PATH[,PATH...] [--arm ...] -o flows.png [--view rows | moves]
 
 Contract. Reads finished journals (tick records, through topout/ledger.py; games still running are skipped and counted,
 as topout-outcomes skips them). Writes the PNG named by -o; prints one line per game: its outcome and its transition
 counts (ledger.flows). Judges nothing beyond the outcome the journal's summary records.
 
-Every row of the 20 is empty, live (cells, no sealed gap: completable) or dead (holds a sealed cell), so every board is
-a point (live, dead) with empty = 20 - live - dead (threads/topout, the triangle model). There is no clock: piece index
-is off the axes, so games of any length and either outcome share a panel without being pooled, and what is drawn is
-where an arm's play spends its pieces. Per arm:
+Neither view has a clock: piece index is off the axes, so games of any length and either outcome share a panel without
+being pooled. Both draw log colour on one range shared by every panel, so darkness compares across arms.
+
+--view rows (default), line level. Every row of the 20 is empty, live (cells, no sealed gap: completable) or dead
+(holds a sealed cell), so every board is a point (live, dead) with empty = 20 - live - dead (threads/topout, the
+triangle model): where an arm's play spends its pieces. Per arm:
 
   cells      the share of the arm's spawn boards in each (live, dead) state (the occluded top-out board is not one),
              in log colour on one range shared by every panel, so darkness compares across arms
@@ -25,6 +27,19 @@ never clear); up the dead axis, too much dead (the rising tide of sealed rows); 
 The per-game counts are the triangle's transitions, cumulative over the game: rows opened (empty -> live) and cleared
 (live -> empty), the headroom balance; sealings (live -> dead) and unsealings (dead -> live), the debt balance, each a
 lower bound (ledger.flows).
+
+--view moves, cell level. Each placement (ledger.placements: the change from the board a piece spawned into to the next
+one) is a point (lines cleared 0-4, sealed cells added; negative: dug out): how an arm's play changes the board.
+  cells      the share of the arm's placements making each move
+  bars       the share of ALL the arm's placements clearing 1, 2, 3 and 4 lines (the 0 bar, most placements, is not
+             drawn: a piece brings 4 cells and a line takes 10, so at most ~40% of placements can clear): the clear
+             profile, comparable across panels
+  numbers    per column, the mean change in sealed cells and the column's placements. Debt is the sum of these changes,
+             so the mean, catastrophes included, is what a kind of move adds per placement (a median reads 0 nearly
+             everywhere). It pools an arm's placements over every board state.
+Reading (11-17): the 0-lines column's tail is erosion against catastrophe (single placements sealing 30-40 cells); the
+1+ columns carry the dig-outs (digging comes with clearing); a clear profile with doubles, triples and Tetrises on
+fewer clearing placements is play that saves its clears.
 """
 from __future__ import annotations
 
@@ -54,26 +69,17 @@ def style(ax) -> None:
     ax.tick_params(colors=MUTED, labelsize=8)
 
 
-def gaps(r: dict) -> int:
-    """Open empty cells inside the stack: below its top, neither filled nor sealed (wells, overhang shadows)."""
-    return 10 * r["height"] - r["filled"] - r["sealed"]
-
-
 # Each view: the points a game contributes, its last point (None: no endpoint), axis labels, and whether its axes are
-# fixed. rows and cells are states (every clean spawn board); moves are transitions (every placement).
+# fixed. rows is a state (every clean spawn board), moves a transition (every placement).
 VIEWS = {
     "rows": dict(points=lambda g: [(r["live_rows"], r["dead_rows"]) for r in g["rows"] if not r["occluded"]],
                  last=lambda g: (g["last"]["live_rows"], g["last"]["dead_rows"]),
                  x="live rows", y="dead rows", fixed=(0, ROWS, 0, ROWS)),
-    "cells": dict(points=lambda g: [(gaps(r), r["sealed"]) for r in g["rows"] if not r["occluded"]],
-                  last=lambda g: (gaps(g["last"]), g["last"]["sealed"]),
-                  x="open gap cells inside the stack (bins of 5)", y="sealed cells (bins of 5)", fixed=None, bin=5),
     "moves": dict(points=lambda g: [(e["lines"], e["sealed"]) for e in ledger.placements(g["rows"])],
                   last=None, x="lines cleared by the placement", y="sealed cells added (- dug out)", fixed=None),
 }
 CAPTIONS = {
     "rows": "share of the arm's pieces spawning into each (live, dead) state; dashed: live + dead = 20",
-    "cells": "share of the arm's pieces spawning into each (open gaps inside the stack, sealed cells) state",
     "moves": "share of the arm's placements making each (lines cleared, change in sealed cells) move",
 }
 
@@ -87,8 +93,7 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
     from mpl_toolkits.axes_grid1 import make_axes_locatable
 
     v = VIEWS[view]
-    b = v.get("bin", 1)                         # cells come in bins (single cells are too sparse to read)
-    pts = {name: [(x // b, y // b) for g in games for x, y in v["points"](g)] for name, games in arms.items()}
+    pts = {name: [p for g in games for p in v["points"](g)] for name, games in arms.items()}
     allp = [p for ps in pts.values() for p in ps]
     x0, x1, y0, y1 = v["fixed"] or (min(0, min(x for x, _ in allp)), max(x for x, _ in allp),
                                     min(0, min(y for _, y in allp)), max(y for _, y in allp))
@@ -124,8 +129,7 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
     for ax, (name, games) in zip(axes.flat, arms.items()):
         share, total = shares[name]
         img = ax.imshow(share, origin="lower", cmap=cmap, norm=norm, interpolation="nearest", aspect="auto",
-                        extent=((x0 - 0.5, x1 + 0.5, y0 - 0.5, y1 + 0.5) if b == 1 else
-                                (b * x0, b * (x1 + 1), b * y0, b * (y1 + 1))))      # bin k spans [bk, bk + b)
+                        extent=(x0 - 0.5, x1 + 0.5, y0 - 0.5, y1 + 0.5))
         style(ax)
         ax.grid(False)
         if view == "rows":
@@ -151,7 +155,7 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
             ax.set_ylim(y0 - 0.5, y1 + 0.5 + head)
         if v["last"]:
             for survived, marker, col in ((False, "o", TOPPED), (True, "s", INK)):
-                ends = Counter(v["last"](g) for g in games if g["survived"] == survived)   # exact, not binned
+                ends = Counter(v["last"](g) for g in games if g["survived"] == survived)
                 if ends:
                     exs, eys, ns = zip(*((x, y, k) for (x, y), k in ends.items()))
                     ax.scatter(exs, eys, s=[28 * k for k in ns], marker=marker, facecolors="none", edgecolors=col,
@@ -161,12 +165,11 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
         div = make_axes_locatable(ax)
         top, right = div.append_axes("top", 0.6, pad=0.05, sharex=ax), div.append_axes("right", 0.6, pad=0.05, sharey=ax)
         xm, ym = margins[name]
-        mid = 0 if b == 1 else b / 2
-        top.bar([b * x + mid for x in xs_all], xm, width=0.9 * b, color=BAR, linewidth=0)
+        top.bar(xs_all, xm, width=0.9, color=BAR, linewidth=0)
         if view == "moves":                     # the per-column means on the panel replace the sealed-cells bars
             right.set_visible(False)
         else:
-            right.barh([b * y + mid for y in ys_all], ym, height=0.9 * b, color=BAR, linewidth=0)
+            right.barh(ys_all, ym, height=0.9, color=BAR, linewidth=0)
         top.set_ylim(0, mtop)
         right.set_xlim(0, mtop)
         for mx in (top, right):
@@ -214,8 +217,8 @@ def main() -> None:
     ap.add_argument("--arm", action="append", required=True, metavar="NAME=PATH[,PATH...]")
     ap.add_argument("-o", "--out", type=Path, required=True, help="PNG to write")
     ap.add_argument("--view", choices=tuple(VIEWS), default="rows",
-                    help="rows: (live, dead) rows; cells: (open gaps inside the stack, sealed) cells; moves: per "
-                         "placement, (lines cleared, sealed cells added)")
+                    help="rows: the line-level triangle, (live, dead) rows at every spawn board; moves: the "
+                         "cell-level map, per placement (lines cleared, sealed cells added)")
     a = ap.parse_args()
     arms = {}
     for name, paths in journals.arms(a.arm).items():

@@ -21,7 +21,6 @@ def test_a_just_started_game_is_nothing_yet_never_a_traceback(tmp_path):
     (game / "journal.jsonl").write_text(json.dumps(json.loads(RUN)) + "\n")
     arm = f"a={tmp_path / 'games'}"
     refuse = {"topout-outcomes": ["--arm", arm],
-              "topout-placements": ["--arm", arm],
               "topout-flows": ["--arm", arm, "-o", tmp_path / "f.png"]}
     for name, args in refuse.items():
         r = _run(ROOT / f"{name}.py", *args)

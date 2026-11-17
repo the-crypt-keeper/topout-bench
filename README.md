@@ -54,7 +54,7 @@ reads only journals, and writes only what its `-o` / `--csv` names.
 
     uv run topout-video.py games/run1 -o run1.mp4                  # every game side by side, in game time
     uv run topout-flows.py --arm run1=games/run1 -o flows.png   # the triangle: where play lives, how games ended
-    uv run topout-placements.py --arm run1=games/run1              # per-placement rates, game-bootstrap intervals
+    uv run topout-flows.py --arm run1=games/run1 -o moves.png --view moves   # each placement: lines cleared, sealed cells added
     uv run topout-outcomes.py --arm run1=games/run1                # survival, then each set's final boards
     uv run topout-replies.py --arm run1=games/run1                 # reply lengths: a piece's first reply vs the rest
     uv run topout-conduct.py --arm run1=games/run1                 # per game: nudges, caps, refusals, calls per reply
@@ -62,9 +62,9 @@ reads only journals, and writes only what its `-o` / `--csv` names.
 - **topout-flows**: every board is a point on the triangle of empty, live (completable) and dead (holding a
   sealed cell) rows; per arm, the share of its pieces in each (live, dead) state with no clock, the live and dead
   marginals, and where each game ended. A dense origin is a good player; how the density smears toward the death
-  line, along the floor (towers) or up the dead axis (sealed rows), fingerprints the style.
-- **topout-placements**: each placement as a ledger event (sealing, dig-outs, lines); per-arm rates with
-  95% intervals from a bootstrap over whole games.
+  line, along the floor (towers) or up the dead axis (sealed rows), fingerprints the style. `--view moves` is the
+  cell level: each placement as (lines cleared, sealed cells added or dug out), the clear profile, and per kind of
+  move the mean change in sealed cells (erosion against catastrophe; digging comes with clearing).
 - **topout-outcomes**: survival n / N per arm, then every game's last board, survivors and topped-out games
   never pooled: pieces placed, lines, lines per turn, filled and sealed cells.
 - **topout-replies**: completion tokens and reasoning per reply, a piece's first reply apart from the rest.
