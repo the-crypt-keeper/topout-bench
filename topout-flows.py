@@ -185,28 +185,47 @@ def plot_triangle(arms, out: Path, log: bool) -> None:
     # arms; linear: each panel its own range, so compare where density sits, not how dark it is
     norm = LogNorm(vmin=finite.min(), vmax=finite.max()) if log and finite.size else None
 
-    cols = 3
+    # marginals: live summed over dead (top), dead summed over live (right), as shares of the arm's pieces; one
+    # range across panels so their heights compare
+    margins = {name: (np.nansum(s, axis=0), np.nansum(s, axis=1)) for name, (s, _) in shares.items()}
+    mtop = max(max(lv.max(), dd.max()) for lv, dd in margins.values()) * 1.05
+
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    cols = min(3, len(arms))
     nrows = -(-len(arms) // cols)
-    fig, axes = plt.subplots(nrows, cols, figsize=(4.2 * cols, 4.0 * nrows), squeeze=False, facecolor=SURFACE)
+    fig, axes = plt.subplots(nrows, cols, figsize=(4.6 * cols, 4.6 * nrows), squeeze=False, facecolor=SURFACE)
     m, img = cmap(), None
     for ax, (name, paths) in zip(axes.flat, arms.items()):
         share, total = shares[name]
         kw = {"norm": norm} if norm else {"vmin": 0, "vmax": np.nanmax(share) if total else 1}
         img = ax.imshow(share, origin="lower", cmap=m, interpolation="nearest",
                         extent=(-0.5, ROWS + 0.5, -0.5, ROWS + 0.5), **kw)
+        div = make_axes_locatable(ax)
+        top, right = div.append_axes("top", 0.6, pad=0.05, sharex=ax), div.append_axes("right", 0.6, pad=0.05, sharey=ax)
+        live, dead = margins[name]
+        top.bar(range(ROWS + 1), live, width=0.9, color=SURVIVED, linewidth=0)
+        right.barh(range(ROWS + 1), dead, height=0.9, color=SURVIVED, linewidth=0)
+        top.set_ylim(0, mtop)
+        right.set_xlim(0, mtop)
+        for mx in (top, right):
+            style(mx)
+            mx.tick_params(labelsize=6)
+        top.tick_params(labelbottom=False)
+        right.tick_params(labelleft=False)
         style(ax)
         ax.grid(False)
         ax.plot([0, ROWS], [ROWS, 0], color=MUTED, linewidth=1, linestyle="--")
         n, alive = len(paths), sum(g["survived"] for g in paths)
-        ax.set_title(f"{name}  ({alive} / {n} survived, {total} pieces)", loc="left", fontsize=9, color=INK)
+        top.set_title(f"{name}  ({alive} / {n} survived, {total} pieces)", loc="left", fontsize=9, color=INK)
         ax.set_xlabel("live rows", color=MUTED, fontsize=8)
         ax.set_ylabel("dead rows", color=MUTED, fontsize=8)
         if not norm:
-            fig.colorbar(img, ax=ax, fraction=0.046, pad=0.02).ax.tick_params(colors=MUTED, labelsize=7)
+            fig.colorbar(img, ax=right, fraction=0.3, pad=0.15).ax.tick_params(colors=MUTED, labelsize=7)
     for ax in list(axes.flat)[len(arms):]:
         ax.set_visible(False)
     scale = "log colour, one range for all panels" if norm else "each panel its own range"
-    fig.suptitle(f"share of the arm's pieces spawning into each (live, dead) state ({scale}); dashed: live + dead = 20",
+    fig.suptitle(f"share of the arm's pieces spawning into each (live, dead) state ({scale}); dashed: live + dead = 20;"
+                 f" bars: live rows (top) and dead rows (right) summed, one range for all panels",
                  color=MUTED, fontsize=9, x=0.01, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     if norm:
