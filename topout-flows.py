@@ -164,15 +164,13 @@ def plot_fan(arms, out: Path) -> None:
     fig.savefig(out, dpi=110, facecolor=SURFACE, bbox_inches="tight")
 
 
-def plot_triangle(arms, out: Path) -> None:
+def plot_triangle(arms, out: Path, log: bool) -> None:
     import matplotlib.pyplot as plt
     import numpy as np
+    from matplotlib.colors import LogNorm
 
-    cols = 3
-    nrows = -(-len(arms) // cols)
-    fig, axes = plt.subplots(nrows, cols, figsize=(4.2 * cols, 4.0 * nrows), squeeze=False, facecolor=SURFACE)
-    m, img = cmap(), None
-    for ax, (name, paths) in zip(axes.flat, arms.items()):
+    shares = {}
+    for name, paths in arms.items():
         counts = np.zeros((ROWS + 1, ROWS + 1))
         for g in paths:
             for r in g["rows"]:
@@ -181,22 +179,40 @@ def plot_triangle(arms, out: Path) -> None:
         total = counts.sum()
         share = counts / total if total else counts
         share[counts == 0] = np.nan
-        img = ax.imshow(share, origin="lower", cmap=m, vmin=0, vmax=np.nanmax(share) if total else 1,
-                        interpolation="nearest", extent=(-0.5, ROWS + 0.5, -0.5, ROWS + 0.5))
+        shares[name] = (share, int(total))
+    finite = np.concatenate([s[np.isfinite(s)] for s, _ in shares.values()])
+    # log: one range for every panel (smallest nonzero share anywhere to the largest), so darkness compares across
+    # arms; linear: each panel its own range, so compare where density sits, not how dark it is
+    norm = LogNorm(vmin=finite.min(), vmax=finite.max()) if log and finite.size else None
+
+    cols = 3
+    nrows = -(-len(arms) // cols)
+    fig, axes = plt.subplots(nrows, cols, figsize=(4.2 * cols, 4.0 * nrows), squeeze=False, facecolor=SURFACE)
+    m, img = cmap(), None
+    for ax, (name, paths) in zip(axes.flat, arms.items()):
+        share, total = shares[name]
+        kw = {"norm": norm} if norm else {"vmin": 0, "vmax": np.nanmax(share) if total else 1}
+        img = ax.imshow(share, origin="lower", cmap=m, interpolation="nearest",
+                        extent=(-0.5, ROWS + 0.5, -0.5, ROWS + 0.5), **kw)
         style(ax)
         ax.grid(False)
         ax.plot([0, ROWS], [ROWS, 0], color=MUTED, linewidth=1, linestyle="--")
         n, alive = len(paths), sum(g["survived"] for g in paths)
-        ax.set_title(f"{name}  ({alive} / {n} survived, {int(total)} pieces)", loc="left", fontsize=9, color=INK)
+        ax.set_title(f"{name}  ({alive} / {n} survived, {total} pieces)", loc="left", fontsize=9, color=INK)
         ax.set_xlabel("live rows", color=MUTED, fontsize=8)
         ax.set_ylabel("dead rows", color=MUTED, fontsize=8)
-        fig.colorbar(img, ax=ax, fraction=0.046, pad=0.02).ax.tick_params(colors=MUTED, labelsize=7)
+        if not norm:
+            fig.colorbar(img, ax=ax, fraction=0.046, pad=0.02).ax.tick_params(colors=MUTED, labelsize=7)
     for ax in list(axes.flat)[len(arms):]:
         ax.set_visible(False)
-    fig.suptitle("share of the arm's pieces spawning into each (live, dead) state; dashed: live + dead = 20",
+    scale = "log colour, one range for all panels" if norm else "each panel its own range"
+    fig.suptitle(f"share of the arm's pieces spawning into each (live, dead) state ({scale}); dashed: live + dead = 20",
                  color=MUTED, fontsize=9, x=0.01, ha="left")
-    fig.tight_layout()
-    fig.savefig(out, dpi=110, facecolor=SURFACE)
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    if norm:
+        cb = fig.colorbar(img, ax=axes.ravel().tolist(), fraction=0.015, pad=0.01)
+        cb.ax.tick_params(colors=MUTED, labelsize=7)
+    fig.savefig(out, dpi=110, facecolor=SURFACE, bbox_inches="tight")
 
 
 def main() -> None:
@@ -204,6 +220,7 @@ def main() -> None:
     ap.add_argument("--arm", action="append", required=True, metavar="NAME=PATH[,PATH...]")
     ap.add_argument("-o", "--out", type=Path, required=True, help="PNG to write")
     ap.add_argument("--mode", choices=("paths", "fan", "triangle"), default="paths")
+    ap.add_argument("--log", action="store_true", help="triangle: log colour, one range shared by every panel")
     a = ap.parse_args()
     import matplotlib
     matplotlib.use("Agg")
@@ -228,7 +245,10 @@ def main() -> None:
                 print(f"{name:<18} {journals.game_id(p)}  {'survived' if survived else 'topped  '}  opened "
                       f"{last['opened']:3d} cleared {last['cleared']:3d} occupied {last['occupied']:2d}  "
                       f"sealings>={last['sealings']:2d} unsealings>={last['unsealings']:2d} dead {last['dead']:2d}")
-    {"paths": plot_paths, "fan": plot_fan, "triangle": plot_triangle}[a.mode](arms, a.out)
+    if a.mode == "triangle":
+        plot_triangle(arms, a.out, a.log)
+    else:
+        {"paths": plot_paths, "fan": plot_fan}[a.mode](arms, a.out)
     print(f"wrote {a.out}")
 
 
