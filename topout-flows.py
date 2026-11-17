@@ -137,6 +137,17 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
         if view == "moves":
             ax.axhline(0, color=MUTED, linewidth=1)
             ax.set_xticks(range(x0, x1 + 1))
+            # per column, the mean change in sealed cells: debt accumulates as the sum of these changes, so the mean is
+            # what a column contributes per placement, its catastrophe tail included (a median would read 0 nearly
+            # everywhere). Labelled with the column's placement count.
+            by = {}
+            for x, y in pts[name]:
+                by.setdefault(x, []).append(y)
+            for x, ys in sorted(by.items()):
+                m = sum(ys) / len(ys)
+                ax.plot([x - 0.45, x + 0.45], [m, m], color=INK, linewidth=2, zorder=4)
+                ax.annotate(f"{m:+.2f}\nn={len(ys)}", (x + 0.45, m), xytext=(2, 0), textcoords="offset points",
+                            fontsize=6, color=INK, va="center")
         if v["last"]:
             for survived, marker, col in ((False, "o", TOPPED), (True, "s", INK)):
                 ends = Counter(v["last"](g) for g in games if g["survived"] == survived)   # exact, not binned
@@ -151,7 +162,10 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
         xm, ym = margins[name]
         mid = 0 if b == 1 else b / 2
         top.bar([b * x + mid for x in xs_all], xm, width=0.9 * b, color=BAR, linewidth=0)
-        right.barh([b * y + mid for y in ys_all], ym, height=0.9 * b, color=BAR, linewidth=0)
+        if view == "moves":                     # the per-column means on the panel replace the sealed-cells bars
+            right.set_visible(False)
+        else:
+            right.barh([b * y + mid for y in ys_all], ym, height=0.9 * b, color=BAR, linewidth=0)
         top.set_ylim(0, mtop)
         right.set_xlim(0, mtop)
         for mx in (top, right):
@@ -166,8 +180,9 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
         ax.set_visible(False)
     ends = ("\nmarkers: each game's last clean board, circles topped out, squares survived, sized by games ending there"
             if v["last"] else "")
-    bars = ("\nbars: among placements that cleared, lines cleared (top); among placements that changed it, the change "
-            "in sealed cells (right); zero bins left out" if view == "moves" else "bars: the two axes summed, one range")
+    bars = ("\nbars: among placements that cleared, lines cleared (zero left out); black lines: the mean change in "
+            "sealed cells per column (debt is their sum), with the column's placements" if view == "moves"
+            else "bars: the two axes summed, one range")
     fig.suptitle(f"{CAPTIONS[view]}, log colour on one range for all panels; {bars}"
                  f"{ends}", color=MUTED, fontsize=9, x=0.01, ha="left")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
