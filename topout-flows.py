@@ -1,22 +1,29 @@
-"""topout-flows: each game as a path through the triangle's transitions, per arm (a prototype).
+"""topout-flows: each game through the triangle's transitions, per arm (a prototype).
 
-    python topout-flows.py --arm NAME=PATH[,PATH...] [--arm ...] -o flows.png
+    python topout-flows.py --arm NAME=PATH[,PATH...] [--arm ...] -o flows.png [--mode paths|fan|triangle]
 
-Contract. Reads journals (tick records only, through topout/ledger.py: running games up to their last tick). Writes the
-PNG named by -o; prints one line per game with its final totals. The transitions are defined in ledger.flows.
+Contract. Reads journals (tick records only, through topout/ledger.py: running games are skipped, as topout-outcomes
+skips them). Writes the PNG named by -o; prints one line per game with its final totals. The transitions are defined in
+ledger.flows, the states in ledger.regions.
 
-Every row of the 20 is empty, live or dead (threads/topout, the triangle model), and the state alone, plotted over
-piece index, says little about play. This plots the transitions' running totals against each other instead, so piece
-index leaves the axes and games of any length share a panel without being pooled:
+Every row of the 20 is empty, live or dead (threads/topout, the triangle model). The state over piece index says little
+about play; these views take piece index off the axes, so games of any length share a panel without being pooled.
 
-  headroom   x = rows opened (empty -> live), y = rows cleared (live -> empty). The diagonal y = x is every opened row
-             cleared; the distance below it is 20 - empty. The dashed line x - y = 20 is the death line: no empty row
-             left (a game can top out a row or two before it, at a spawn).
-  debt       x = sealings (live -> dead), y = unsealings (dead -> live), both lower bounds (ledger.flows). The diagonal
-             is no net debt; the distance below it is dead rows held.
+  paths      one path per game. headroom: x = rows opened (empty -> live), y = rows cleared (live -> empty); the
+             diagonal is every opened row cleared, the dashed line x - y = 20 the death line (no empty row; a game can
+             top out a row or two before it, at a spawn). debt: x = sealings (live -> dead), y = unsealings (dead ->
+             live), both lower bounds; the diagonal is no net debt.
+  fan        the same two, rotated and as density. headroom: x = rows opened (the game's own row clock), y = rows
+             occupied (= opened - cleared = 20 - empty); balance is a band of constant height, the death line the top.
+             debt: x = sealings, y = dead rows held. A cell's colour is the share of the games still going at that x
+             that pass through it; the strip under each fan is how many games are still going, which is how far each
+             column can be trusted.
+  triangle   no clock at all: x = live rows, y = dead rows, at every spawn board a game reached (not the occluded one
+             at top-out). A cell's colour is its share of the arm's pieces: where the arm's play lives. The ceiling
+             live + dead = 20 is drawn.
 
-One row of panels per arm, axes shared across arms. Paths are coloured by outcome, read from the journal's summary as
-topout-outcomes reads it (unfinished games are skipped); nothing else is judged.
+One row per arm, axes shared across arms. paths colours by outcome, read from the journal's summary as topout-outcomes
+reads it; the density views judge nothing.
 """
 from __future__ import annotations
 
@@ -28,43 +35,56 @@ from topout import journals, ledger
 
 INK, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
 SURVIVED, TOPPED = "#2a78d6", "#eb6834"
+# the reference sequential blue, step 100 -> 700 (dataviz skill, references/palette.md); empty cells stay the surface
+RAMP = ["#cde2fb", "#b7d3f6", "#9ec5f4", "#86b6ef", "#6da7ec", "#5598e7", "#3987e5", "#2a78d6", "#256abf",
+        "#1c5cab", "#184f95", "#104281", "#0d366b"]
+ROWS = ledger.ROWS
 
 
-def plot(arms: dict[str, list[tuple[list[dict], bool]]], out: Path) -> None:
-    import matplotlib
-    matplotlib.use("Agg")
+def style(ax) -> None:
+    ax.set_facecolor(SURFACE)
+    ax.grid(True, color=GRID, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    for s in ("left", "bottom"):
+        ax.spines[s].set_color(GRID)
+    ax.tick_params(colors=MUTED, labelsize=8)
+
+
+def cmap():
+    from matplotlib.colors import ListedColormap
+    m = ListedColormap(RAMP)
+    m.set_bad(SURFACE)
+    return m
+
+
+def plot_paths(arms, out: Path) -> None:
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
-    games = [f for paths in arms.values() for f, _ in paths if f]
+    games = [g["flows"] for paths in arms.values() for g in paths if g["flows"]]
     hx = max(f[-1]["opened"] for f in games) + 2
     dx = max(max(f[-1]["sealings"], f[-1]["unsealings"]) for f in games) + 1
     fig, axes = plt.subplots(len(arms), 2, figsize=(11, 3.4 * len(arms)), squeeze=False, facecolor=SURFACE)
     for (name, paths), (hax, dax) in zip(arms.items(), axes):
         for ax, (xk, yk), lim in ((hax, ("opened", "cleared"), hx), (dax, ("sealings", "unsealings"), dx)):
-            ax.set_facecolor(SURFACE)
+            style(ax)
             ax.plot([0, lim], [0, lim], color=MUTED, linewidth=1)
             if ax is hax:
                 ax.plot([20, lim], [0, lim - 20], color=MUTED, linewidth=1, linestyle="--")
-            for f, survived in paths:
+            for g in paths:
+                f = g["flows"]
                 if not f:
                     continue
                 xs, ys = [0] + [r[xk] for r in f], [0] + [r[yk] for r in f]
-                col = SURVIVED if survived else TOPPED
+                col = SURVIVED if g["survived"] else TOPPED
                 ax.plot(xs, ys, color=col, linewidth=1.4, alpha=0.75, drawstyle="steps-post")
                 ax.plot(xs[-1], ys[-1], "o", color=col, markersize=3)
             ax.set_xlim(0, lim)
             ax.set_ylim(0, lim)
             ax.set_aspect("equal")
-            ax.grid(True, color=GRID, linewidth=0.8)
-            ax.set_axisbelow(True)
-            for s in ("top", "right"):
-                ax.spines[s].set_visible(False)
-            for s in ("left", "bottom"):
-                ax.spines[s].set_color(GRID)
-            ax.tick_params(colors=MUTED, labelsize=8)
-        n = sum(1 for f, _ in paths if f)
-        alive = sum(1 for f, s in paths if f and s)
+        n, alive = len(paths), sum(g["survived"] for g in paths)
         hax.set_title(f"{name}  headroom  ({alive} / {n} survived)", loc="left", fontsize=10, color=INK)
         dax.set_title(f"{name}  debt (lower bounds)", loc="left", fontsize=10, color=INK)
         hax.set_xlabel("rows opened (empty -> live)", color=MUTED, fontsize=8)
@@ -79,11 +99,114 @@ def plot(arms: dict[str, list[tuple[list[dict], bool]]], out: Path) -> None:
     fig.savefig(out, dpi=120, facecolor=SURFACE)
 
 
+def fan_grid(paths, xk: str, yk: str, width: int):
+    """share[y][x] = games passing through (x, y) / games still going at x; going[x]. A placement that opens several
+    rows at once moves x by more than one: the columns it skips get the cells between, one row per row opened (the
+    rows stack), so a column is never empty for a game that went through it."""
+    import numpy as np
+    passed = np.zeros((ROWS + 1, width))
+    going = np.zeros(width)
+    for g in paths:
+        f = g["flows"]
+        if not f:
+            continue
+        cells, px, py = {(0, 0)}, 0, 0
+        for r in f:
+            x, y = r[xk], min(r[yk], ROWS)
+            for k in range(px + 1, x):                       # skipped columns, filled along the step
+                cells.add((k, min(py + (k - px) * (y - py) // max(x - px, 1), ROWS)))
+            cells.add((x, y))
+            px, py = x, y
+        for x, y in cells:
+            passed[y][x] += 1
+        going[: f[-1][xk] + 1] += 1
+    with np.errstate(invalid="ignore", divide="ignore"):
+        share = passed / going
+    share[passed == 0] = np.nan
+    return share, going
+
+
+def plot_fan(arms, out: Path) -> None:
+    import matplotlib.pyplot as plt
+
+    games = [g["flows"] for paths in arms.values() for g in paths if g["flows"]]
+    widths = {"opened": max(f[-1]["opened"] for f in games) + 1, "sealings": max(f[-1]["sealings"] for f in games) + 1}
+    fig = plt.figure(figsize=(12, 3.9 * len(arms)), facecolor=SURFACE)
+    outer = fig.add_gridspec(len(arms), 2, hspace=0.55, wspace=0.18)
+    m, img = cmap(), None
+    for i, (name, paths) in enumerate(arms.items()):
+        n, alive = len(paths), sum(g["survived"] for g in paths)
+        for j, (xk, yk, title, xl, yl) in enumerate((
+                ("opened", "occupied", f"{name}  headroom fan  ({alive} / {n} survived)",
+                 "rows opened (empty -> live)", "rows occupied (20 - empty)"),
+                ("sealings", "dead", f"{name}  debt fan", "sealings (live -> dead, lower bound)", "dead rows held"))):
+            inner = outer[i, j].subgridspec(2, 1, height_ratios=[4, 1], hspace=0.08)
+            ax, strip = fig.add_subplot(inner[0]), fig.add_subplot(inner[1])
+            share, going = fan_grid(paths, xk, yk, widths[xk])
+            img = ax.imshow(share, origin="lower", aspect="auto", cmap=m, vmin=0, vmax=1, interpolation="nearest",
+                            extent=(-0.5, widths[xk] - 0.5, -0.5, ROWS + 0.5))
+            style(ax)
+            ax.grid(False)
+            if xk == "opened":
+                ax.axhline(ROWS, color=MUTED, linewidth=1, linestyle="--")
+            ax.set_title(title, loc="left", fontsize=10, color=INK)
+            ax.set_ylabel(yl, color=MUTED, fontsize=8)
+            ax.tick_params(labelbottom=False)
+            strip.bar(range(widths[xk]), going, width=1.0, color=MUTED, linewidth=0)
+            style(strip)
+            strip.set_xlim(-0.5, widths[xk] - 0.5)
+            strip.set_ylim(0, n)
+            strip.set_ylabel("games\ngoing", color=MUTED, fontsize=7)
+            strip.set_xlabel(xl, color=MUTED, fontsize=8)
+    cb = fig.colorbar(img, ax=fig.axes, fraction=0.015, pad=0.01)
+    cb.set_label("share of the games still going at x that pass through the cell", color=MUTED, fontsize=8)
+    cb.ax.tick_params(colors=MUTED, labelsize=7)
+    fig.savefig(out, dpi=110, facecolor=SURFACE, bbox_inches="tight")
+
+
+def plot_triangle(arms, out: Path) -> None:
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    cols = 3
+    nrows = -(-len(arms) // cols)
+    fig, axes = plt.subplots(nrows, cols, figsize=(4.2 * cols, 4.0 * nrows), squeeze=False, facecolor=SURFACE)
+    m, img = cmap(), None
+    for ax, (name, paths) in zip(axes.flat, arms.items()):
+        counts = np.zeros((ROWS + 1, ROWS + 1))
+        for g in paths:
+            for r in g["rows"]:
+                if not r["occluded"]:
+                    counts[r["dead_rows"]][r["live_rows"]] += 1
+        total = counts.sum()
+        share = counts / total if total else counts
+        share[counts == 0] = np.nan
+        img = ax.imshow(share, origin="lower", cmap=m, vmin=0, vmax=np.nanmax(share) if total else 1,
+                        interpolation="nearest", extent=(-0.5, ROWS + 0.5, -0.5, ROWS + 0.5))
+        style(ax)
+        ax.grid(False)
+        ax.plot([0, ROWS], [ROWS, 0], color=MUTED, linewidth=1, linestyle="--")
+        n, alive = len(paths), sum(g["survived"] for g in paths)
+        ax.set_title(f"{name}  ({alive} / {n} survived, {int(total)} pieces)", loc="left", fontsize=9, color=INK)
+        ax.set_xlabel("live rows", color=MUTED, fontsize=8)
+        ax.set_ylabel("dead rows", color=MUTED, fontsize=8)
+        fig.colorbar(img, ax=ax, fraction=0.046, pad=0.02).ax.tick_params(colors=MUTED, labelsize=7)
+    for ax in list(axes.flat)[len(arms):]:
+        ax.set_visible(False)
+    fig.suptitle("share of the arm's pieces spawning into each (live, dead) state; dashed: live + dead = 20",
+                 color=MUTED, fontsize=9, x=0.01, ha="left")
+    fig.tight_layout()
+    fig.savefig(out, dpi=110, facecolor=SURFACE)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--arm", action="append", required=True, metavar="NAME=PATH[,PATH...]")
     ap.add_argument("-o", "--out", type=Path, required=True, help="PNG to write")
+    ap.add_argument("--mode", choices=("paths", "fan", "triangle"), default="paths")
     a = ap.parse_args()
+    import matplotlib
+    matplotlib.use("Agg")
     arms = {}
     for name, paths in journals.arms(a.arm).items():
         arms[name] = []
@@ -96,15 +219,16 @@ def main() -> None:
             if summary is None:                     # still running: skipped, as topout-outcomes skips it
                 print(f"{name:<18} {journals.game_id(p)}  unfinished, skipped")
                 continue
+            rows = ledger.piece_rows(p)
+            f = ledger.flows(rows)
             survived = summary["termination"] == "max_pieces"
-            f = ledger.flows(ledger.piece_rows(p))
-            arms[name].append((f, survived))
+            arms[name].append({"rows": rows, "flows": f, "survived": survived})
             if f:
                 last = f[-1]
                 print(f"{name:<18} {journals.game_id(p)}  {'survived' if survived else 'topped  '}  opened "
-                      f"{last['opened']:3d} cleared {last['cleared']:3d} (20 - empty = {last['opened'] - last['cleared']:2d})"
-                      f"  sealings>={last['sealings']:2d} unsealings>={last['unsealings']:2d}")
-    plot(arms, a.out)
+                      f"{last['opened']:3d} cleared {last['cleared']:3d} occupied {last['occupied']:2d}  "
+                      f"sealings>={last['sealings']:2d} unsealings>={last['unsealings']:2d} dead {last['dead']:2d}")
+    {"paths": plot_paths, "fan": plot_fan, "triangle": plot_triangle}[a.mode](arms, a.out)
     print(f"wrote {a.out}")
 
 

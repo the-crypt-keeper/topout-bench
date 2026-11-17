@@ -114,7 +114,8 @@ def flows(rows: list[dict]) -> list[dict]:
                   that seals one row and unseals another nets to zero); per-row tracking is the refinement, not built
 
     empty = 20 - (opened - cleared) when no row is skipped. An occluded board (top-out) ends the events, as in
-    placements. One dict per placement: the piece, then the four running totals."""
+    placements. One dict per placement: the piece, the four running totals, and the state after it: `occupied` (the
+    stack height, = opened - cleared, = 20 - empty) and `dead` (dead rows held)."""
     out, o, c, s, u = [], 0, 0, 0, 0
     for a, b in zip(rows, rows[1:]):
         if b["occluded"]:
@@ -126,7 +127,8 @@ def flows(rows: list[dict]) -> list[dict]:
                              f"{b['height']}, cleared {cleared}): the stack top fell by more than its clears")
         d = b["dead_rows"] - a["dead_rows"]
         o, c, s, u = o + opened, c + cleared, s + max(d, 0), u + max(-d, 0)
-        out.append({"piece": a["piece"], "opened": o, "cleared": c, "sealings": s, "unsealings": u})
+        out.append({"piece": a["piece"], "opened": o, "cleared": c, "sealings": s, "unsealings": u,
+                    "occupied": b["height"], "dead": b["dead_rows"]})
     return out
 
 
