@@ -104,15 +104,15 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
     norm = LogNorm(vmin=finite.min(), vmax=finite.max())
     margins = {name: (np.nansum(s, axis=0), np.nansum(s, axis=1)) for name, (s, _) in shares.items()}
     if view == "moves":
-        # most placements clear nothing and seal nothing: a piece brings 4 cells and a line takes 10, so at most ~40% of
-        # placements can clear at all. The bars leave out the zero bin and are shares among the placements that did
-        # something: the clear profile (1-4 lines) and the size of each change in sealed cells.
-        def nonzero(m, zero):
+        # most placements clear nothing: a piece brings 4 cells and a line takes 10, so at most ~40% of placements can
+        # clear at all. The zero bin is not drawn, but the bars stay shares of ALL the arm's placements, so their
+        # heights compare across panels (a panel with 4 clears is not drawn like one with 300).
+        def drop_zero(m, zero):
             m = m.copy()
             m[zero] = 0
-            return m / m.sum() if m.sum() else m
-        margins = {name: (nonzero(xm, 0 - x0), nonzero(ym, 0 - y0)) for name, (xm, ym) in margins.items()}
-    mtop = max(max(xm.max(), ym.max()) for xm, ym in margins.values()) * 1.05
+            return m
+        margins = {name: (drop_zero(xm, 0 - x0), ym) for name, (xm, ym) in margins.items()}
+    mtop = max((xm.max() if view == "moves" else max(xm.max(), ym.max())) for xm, ym in margins.values()) * 1.05
     cmap = ListedColormap(RAMP)
     cmap.set_bad(SURFACE)
     xs_all, ys_all = range(x0, x1 + 1), range(y0, y1 + 1)
@@ -181,7 +181,7 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
         ax.set_visible(False)
     ends = ("\nmarkers: each game's last clean board, circles topped out, squares survived, sized by games ending there"
             if v["last"] else "")
-    bars = ("\nbars: among placements that cleared, lines cleared (zero left out); numbers: per column, the mean change "
+    bars = ("\nbars: share of all the arm's placements clearing 1-4 lines (the 0 bar not drawn); numbers: per column, the mean change "
             "in sealed cells (debt is their sum) and the column's placements" if view == "moves"
             else "bars: the two axes summed, one range")
     fig.suptitle(f"{CAPTIONS[view]}, log colour on one range for all panels; {bars}"
