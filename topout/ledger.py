@@ -104,6 +104,32 @@ def piece_rows(path: Path) -> list[dict]:
     return rows
 
 
+def flows(rows: list[dict]) -> list[dict]:
+    """The triangle's transitions, cumulative from the first piece (threads/topout, the triangle model): each row of
+    the 20 is empty, live or dead, and between consecutive spawn boards
+
+      cleared     live -> empty: the lines that piece cleared (a cleared row was full, so live)
+      opened      empty -> live: rows newly occupied, d(height) + cleared (only a clear lowers the stack top)
+      sealings    live -> dead, and unsealings dead -> live: from d(dead_rows) alone, so each is a LOWER BOUND (a piece
+                  that seals one row and unseals another nets to zero); per-row tracking is the refinement, not built
+
+    empty = 20 - (opened - cleared) when no row is skipped. An occluded board (top-out) ends the events, as in
+    placements. One dict per placement: the piece, then the four running totals."""
+    out, o, c, s, u = [], 0, 0, 0, 0
+    for a, b in zip(rows, rows[1:]):
+        if b["occluded"]:
+            break
+        cleared = b["lines"] - a["lines"]
+        opened = b["height"] - a["height"] + cleared
+        if opened < 0:
+            raise ValueError(f"{a['game']} piece {a['piece']}: rows opened {opened} < 0 (height {a['height']} -> "
+                             f"{b['height']}, cleared {cleared}): the stack top fell by more than its clears")
+        d = b["dead_rows"] - a["dead_rows"]
+        o, c, s, u = o + opened, c + cleared, s + max(d, 0), u + max(-d, 0)
+        out.append({"piece": a["piece"], "opened": o, "cleared": c, "sealings": s, "unsealings": u})
+    return out
+
+
 def placements(rows: list[dict]) -> list[dict]:
     """A placement of piece p is the change from the board p spawned into to the board p+1 spawned into: sealed cells
     added (sealing) or removed (dig-out), and lines cleared. An occluded board (top-out) ends the game's events."""
