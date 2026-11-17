@@ -139,15 +139,16 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
             ax.set_xticks(range(x0, x1 + 1))
             # per column, the mean change in sealed cells: debt accumulates as the sum of these changes, so the mean is
             # what a column contributes per placement, its catastrophe tail included (a median would read 0 nearly
-            # everywhere). Labelled with the column's placement count.
+            # everywhere). Written as numbers, centred on each column in one row near the top (a line at this scale
+            # sits on 0), with the column's placement count.
             by = {}
             for x, y in pts[name]:
                 by.setdefault(x, []).append(y)
+            head = 0.14 * (y1 - y0)                 # a strip above the data range, so no stripe runs under a number
             for x, ys in sorted(by.items()):
-                m = sum(ys) / len(ys)
-                ax.plot([x - 0.45, x + 0.45], [m, m], color=INK, linewidth=2, zorder=4)
-                ax.annotate(f"{m:+.2f}\nn={len(ys)}", (x + 0.45, m), xytext=(2, 0), textcoords="offset points",
-                            fontsize=6, color=INK, va="center")
+                ax.text(x, y1 + 0.5 + head / 2, f"{sum(ys) / len(ys):+.2f}\nn={len(ys)}", ha="center", va="center",
+                        fontsize=7, color=INK)
+            ax.set_ylim(y0 - 0.5, y1 + 0.5 + head)
         if v["last"]:
             for survived, marker, col in ((False, "o", TOPPED), (True, "s", INK)):
                 ends = Counter(v["last"](g) for g in games if g["survived"] == survived)   # exact, not binned
@@ -180,8 +181,8 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
         ax.set_visible(False)
     ends = ("\nmarkers: each game's last clean board, circles topped out, squares survived, sized by games ending there"
             if v["last"] else "")
-    bars = ("\nbars: among placements that cleared, lines cleared (zero left out); black lines: the mean change in "
-            "sealed cells per column (debt is their sum), with the column's placements" if view == "moves"
+    bars = ("\nbars: among placements that cleared, lines cleared (zero left out); numbers: per column, the mean change "
+            "in sealed cells (debt is their sum) and the column's placements" if view == "moves"
             else "bars: the two axes summed, one range")
     fig.suptitle(f"{CAPTIONS[view]}, log colour on one range for all panels; {bars}"
                  f"{ends}", color=MUTED, fontsize=9, x=0.01, ha="left")
