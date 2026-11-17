@@ -98,6 +98,9 @@ def plot(arms: dict[str, list[dict]], out: Path) -> None:
                            linewidths=1.3, zorder=3)
         ax.set_xlabel("live rows", color=MUTED, fontsize=8)
         ax.set_ylabel("dead rows", color=MUTED, fontsize=8)
+        ticks = range(0, ROWS + 1, 5)                       # whole rows, every 5, the same on both axes
+        ax.set_xticks(ticks)
+        ax.set_yticks(ticks)
         div = make_axes_locatable(ax)
         top, right = div.append_axes("top", 0.6, pad=0.05, sharex=ax), div.append_axes("right", 0.6, pad=0.05, sharey=ax)
         live, dead = margins[name]
