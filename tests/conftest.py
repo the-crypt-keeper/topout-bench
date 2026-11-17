@@ -61,13 +61,15 @@ def fake_engine():
     server.server_close()
 
 
-def script(name: str):
-    """A topout-*.py script loaded as a module (its name has dashes, so it cannot be imported)."""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), ROOT / f"{name}.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+def counts(rows: list[dict]) -> dict[str, int]:
+    """The harness's interventions, read off the journal's records: a reply with no tool call (nudge), a reply cut off
+    by max_tokens (capped; a cut at the context is a reset), a decision every attempt of which was cut off (lost), and
+    a fresh conversation because the context was full (reset)."""
+    from topout.calls import is_reply
+    return {"nudges": sum(1 for x in rows if x.get("parse_error") == "no tool call"),
+            "capped": sum(1 for x in rows if x.get("kind") == "capped" and x.get("reason") != "context"),
+            "lost": sum(1 for x in rows if x.get("parse_error") == "capped"),
+            "resets": sum(1 for x in rows if is_reply(x) and x.get("conv_reset") == "context")}
 
 
 def play(apibase: str, out: Path, extra: list[str] = (), pieces: int = 3, max_tokens: int = 100,

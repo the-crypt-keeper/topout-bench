@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from topout.calls import is_reply
-from tests.conftest import ROOT, play, script
+from tests.conftest import ROOT, counts, play
 
 
 def test_replies_counts_every_served_reply_once_split_by_turn(fake_engine, tmp_path):
@@ -22,15 +22,14 @@ def test_replies_counts_every_served_reply_once_split_by_turn(fake_engine, tmp_p
     assert counts["first"] == first
 
 
-def test_conduct_counts_from_records_match_the_engine_and_the_live_lines(fake_engine, tmp_path):
+def test_journal_records_match_the_engine_and_the_live_lines(fake_engine, tmp_path):
     r, rows = play(fake_engine(length_rate=0.6, no_call_rate=0.3, seed=0), tmp_path / "g", pieces=4)
     assert r.returncode == 0, r.stdout[-2000:]
-    n = script("topout-conduct").conduct(tmp_path / "g" / "journal.jsonl")
-    assert n["replies"] == fake_engine.served()
+    assert sum(1 for x in rows if is_reply(x)) == fake_engine.served()
+    n = counts(rows)
     assert (n["nudges"], n["capped"], n["lost"]) == (r.stdout.count("NUDGE:"), r.stdout.count("CAPPED:"),
                                                      r.stdout.count("LOST:"))
     assert n["nudges"] and n["capped"] and n["lost"]
-    assert n["decisions"] == sum(1 for x in rows if x.get("kind") == "tick" and x.get("action"))
 
 
 def test_summary_is_how_the_game_ended_and_nothing_else(fake_engine, tmp_path):

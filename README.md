@@ -57,7 +57,6 @@ reads only journals, and writes only what its `-o` / `--csv` names.
     uv run topout-flows.py --arm run1=games/run1 -o moves.png --view moves   # each placement: lines cleared, sealed cells added
     uv run topout-outcomes.py --arm run1=games/run1                # survival, then each set's final boards
     uv run topout-replies.py --arm run1=games/run1                 # reply lengths: a piece's first reply vs the rest
-    uv run topout-conduct.py --arm run1=games/run1                 # per game: nudges, caps, refusals, calls per reply
 
 - **topout-flows**: every board is a point on the triangle of empty, live (completable) and dead (holding a
   sealed cell) rows; per arm, the share of its pieces in each (live, dead) state with no clock, the live and dead
@@ -68,7 +67,6 @@ reads only journals, and writes only what its `-o` / `--csv` names.
 - **topout-outcomes**: survival n / N per arm, then every game's last board, survivors and topped-out games
   never pooled: pieces placed, lines, lines per turn, filled and sealed cells.
 - **topout-replies**: completion tokens and reasoning per reply, a piece's first reply apart from the rest.
-- **topout-conduct**: how the model handled the harness, counted from the records.
 
 ## Tests
 

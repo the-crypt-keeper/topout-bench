@@ -26,9 +26,8 @@ def test_a_just_started_game_is_nothing_yet_never_a_traceback(tmp_path):
         r = _run(ROOT / f"{name}.py", *args)
         assert r.returncode != 0 and "Traceback" not in r.stderr and f"{name}: " in r.stderr, (name, r.stderr)
     assert not any((tmp_path / f).exists() for f in ("o.png", "f.png"))
-    for name in ("topout-replies", "topout-conduct"):
-        r = _run(ROOT / f"{name}.py", "--arm", arm)
-        assert r.returncode == 0 and "Traceback" not in r.stderr, (name, r.stderr)
+    r = _run(ROOT / "topout-replies.py", "--arm", arm)
+    assert r.returncode == 0 and "Traceback" not in r.stderr, r.stderr
 
 
 def test_outcomes_puts_a_survivor_in_the_survived_set_with_its_last_board(fake_engine, tmp_path):

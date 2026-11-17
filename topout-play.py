@@ -3,7 +3,7 @@
 Contract. Plays: talks to one OpenAI-compatible endpoint, presses buttons, and writes OUTPUT/journal.jsonl (with
 --games, OUTPUT/<i>/journal.jsonl per game) and nothing else. The journal is the record of everything that happened;
 the player computes no statistic over it: its summary holds only how the game ended, and every count, rate or
-distribution is analysis (topout-conduct, topout-replies, topout-flows, ...). Prints live events for whoever
+distribution is analysis (topout-replies, topout-flows, ...). Prints live events for whoever
 watches: one progress line per press, and NUDGE: / CAPPED: / LOST: / RESET: / ERROR: lines.
 
 The decisions are the tools: start() left() right() rotate() drop() wait(), against any OpenAI-compatible
@@ -278,7 +278,7 @@ def play(a) -> int:
             journal.write(json.dumps({"kind": "reply", **reply, "plan": plan, "pieces": piece}) + "\n")
             journal.flush()
     end = game.info()
-    # how the game ended, which only the player knows; every count over the records is analysis (topout-conduct)
+    # how the game ended, which only the player knows; every count over the records is analysis
     summary = {"kind": "summary", "termination": "game_over" if game.game_over else "max_pieces",
                "game_over": game.game_over, "pieces": end["pieces"] if game.game_over else a.max_pieces,
                "lines": end["lines"], "score": end["score"], "frames": len(game.inputs)}

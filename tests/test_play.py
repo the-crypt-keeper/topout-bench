@@ -5,9 +5,7 @@ import json
 import subprocess
 import sys
 
-from tests.conftest import ROOT, play, script
-
-CONDUCT = script("topout-conduct")
+from tests.conftest import ROOT, counts, play
 
 
 def test_plays_to_the_piece_cap_and_records_v1(fake_engine, tmp_path):
@@ -27,7 +25,7 @@ def test_length_is_retried_never_looped_back_then_rebooted(fake_engine, tmp_path
     Neither CAPPED nor LOST is an ERROR."""
     r, rows = play(fake_engine(length_rate=0.6, seed=0), tmp_path / "g", pieces=4)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
-    n = CONDUCT.conduct(tmp_path / "g" / "journal.jsonl")
+    n = counts(rows)
     assert n["capped"] > 0 and n["lost"] > 0, n
     assert n["nudges"] == 0                             # a cut-off reply is never treated as no-tool-call
     assert "ERROR" not in r.stdout
@@ -49,7 +47,7 @@ def test_no_tool_call_presses_wait_then_a_user_turn(fake_engine, tmp_path):
     and a user turn saying so (the only valid next message). A NUDGE is not an ERROR."""
     r, rows = play(fake_engine(no_call_rate=0.5, seed=1), tmp_path / "g", pieces=4)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
-    n = CONDUCT.conduct(tmp_path / "g" / "journal.jsonl")
+    n = counts(rows)
     nudged = [x for x in rows if x.get("parse_error") == "no tool call"]
     assert n["nudges"] == len(nudged) > 0
     assert all(x["action"] == "wait" for x in nudged)
@@ -159,7 +157,7 @@ def test_context_full_reply_resets_the_conversation(fake_engine, tmp_path):
     full = [x for x in rows if x.get("kind") == "capped" and x.get("reason") == "context"]
     assert full and r.stdout.count("RESET: context") == len(full)
     assert all(x["usage"]["prompt_tokens"] + x["usage"]["completion_tokens"] == 3000 for x in full)
-    n = CONDUCT.conduct(tmp_path / "g" / "journal.jsonl")
+    n = counts(rows)
     assert n["capped"] == 0 and n["lost"] == 0 and n["resets"] == len(full), n
     assert not any(x.get("parse_error") == "capped" for x in rows)     # no wait pressed for it
     for i, x in enumerate(rows):                                      # the next request is a fresh conversation
@@ -176,7 +174,7 @@ def test_turn_cap_is_still_a_cap_on_a_clamping_engine(fake_engine, tmp_path):
     capped = [x for x in rows if x.get("kind") == "capped"]
     assert capped and all(x["reason"] == "max_tokens" for x in capped)
     assert "RESET: context" not in r.stdout
-    assert CONDUCT.conduct(tmp_path / "g" / "journal.jsonl")["capped"] == len(capped)
+    assert counts(rows)["capped"] == len(capped)
 
 
 def test_context_overflow_matches_vllm_033_refusals():
