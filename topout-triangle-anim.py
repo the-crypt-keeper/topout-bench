@@ -13,7 +13,7 @@ One frame per piece index k = 1..--pieces. Per arm, frame k shows:
   dots       where each game still alive at piece k is, sized by games in the cell
   markers    each game's last clean board from the piece it ended on: circles topped out, squares survived
 The static view has no clock on purpose (threads/topout, 11-17: removing time was the unlock); this puts the clock back
-as the frame, never on an axis, to watch how an arm reaches its fingerprint. A prototype (11-18).
+as the frame, never on an axis, to watch how an arm reaches its fingerprint. Kept as its own script (operator, 11-18).
 """
 from __future__ import annotations
 

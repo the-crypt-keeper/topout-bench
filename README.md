@@ -55,6 +55,7 @@ reads only journals, and writes only what its `-o` / `--csv` names.
     uv run topout-video.py games/run1 -o run1.mp4                  # every game side by side, in game time
     uv run topout-flows.py --arm run1=games/run1 -o flows.png   # the triangle: where play lives, how games ended
     uv run topout-flows.py --arm run1=games/run1 -o moves.png --view moves   # each placement: lines cleared, sealed cells added
+    uv run topout-triangle-anim.py --arm run1=games/run1 -o tri.mp4   # the triangle lit up piece by piece (.mp4 or .gif)
     uv run topout-outcomes.py --arm run1=games/run1                # survival, then each set's final boards
     uv run topout-replies.py --arm run1=games/run1                 # reply lengths: a piece's first reply vs the rest
 
@@ -66,6 +67,9 @@ reads only journals, and writes only what its `-o` / `--csv` names.
   move the mean change in sealed cells (erosion against catastrophe; digging comes with clearing).
 - **topout-outcomes**: survival n / N per arm, then every game's last board, survivors and topped-out games
   never pooled: pieces placed, lines, lines per turn, filled and sealed cells.
+- **topout-triangle-anim**: topout-flows' triangle as an animation, one frame per piece: the cells light up as the
+  arm's spawn boards accumulate (the last frame is the static view), dots for the games alive at that piece, end
+  markers from the piece each game ended. The clock is the frame, never an axis: how an arm reaches its fingerprint.
 - **topout-replies**: completion tokens and reasoning per reply, a piece's first reply apart from the rest.
 
 ## Tests
