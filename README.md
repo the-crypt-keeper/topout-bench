@@ -59,6 +59,7 @@ folder of the results dataset, below), reads only journals, and writes only what
     uv run topout-outcomes.py --arm run1=games/run1                # survival, then each set's final boards
     uv run topout-burden.py --dataset results -o burden.png        # every arm: burden against tokens, and every game
     uv run topout-decisions.py --dataset results -o decisions.png  # every arm: planning and execution fingerprints
+    uv run topout-explore.py --dataset results                     # all of it, interactive: arms, games, pieces, thinking
     uv run topout-replies.py --arm run1=games/run1                 # reply lengths: a piece's first reply vs the rest
 
 - **topout-flows**: every board is a point on the triangle of empty, live (completable) and dead (holding a

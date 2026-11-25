@@ -72,7 +72,7 @@ press: board before it, action, frames, `inputs`). Boards are shown *before* eac
 - Untested lead: P(clear | live rows), E[lines | live, dead], i.e. skill in a state apart from which states play
   visits, with each bin trusted by its *game* count. Compare arms only where their states overlap.
 - Not built: Kaplan-Meier, random-policy reference, per-row seal/unseal tracking (`flows()` gives lower bounds),
-  piece-aware reachability (the flood assumes 1x1 cells). Next view: an HTML scrubber over one arm's 16 games.
+  piece-aware reachability (the flood assumes 1x1 cells). 
 - No script emits machine-readable output; README mentions a `--csv` that no script has.
 - Labels and effort ladders are the dataset's `index.json` (topout/index.py), seeded by topout-publish from names and edited by
   hand. Never put a model, label or effort fact in a script.
@@ -80,6 +80,15 @@ press: board before it, action, frames, `inputs`). Boards are shown *before* eac
   `sealed_slack`, `covered` or `tuckable` any more; only the triangle's rows and the sealed count are used.
 - `game()`, `style()` and the palette are duplicated between topout-flows and topout-triangle-anim.
 - Published games show a 64-character id in outcomes' table.
+
+## The Explorer (`topout-explore.py`)
+
+Dash on waitress, reading a local dataset through `topout/store.py` (a cache that rebuilds; nothing derived is published).
+Levels: arms > arm (up to 4 side by side on one scrubber and scale) > game > piece. The rail changes what is drawn, never
+what a number means. The address is the only state; `dcc.Location` needs `refresh="callback-nav"` or every choice reloads
+the page. Phones get their own figures (`narrow`), with a line steering to a larger screen where that costs something.
+Board colours and the flood in explore_assets/boards.js mirror topout/ledger.py. It covers topout-flows and
+topout-triangle-anim, which retire once the operator is satisfied; the PNG scripts stay. Piece search: held off.
 
 ## Working here
 

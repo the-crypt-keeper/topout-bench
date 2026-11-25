@@ -64,9 +64,15 @@ def test_every_level_renders(game, tmp_path):
     data = ex.Data(index.arms(None, [f"a={game.parent}"]), tmp_path / "cache")
     nav = ex.Nav(data, {})
     key = data.arms["a"]["games"][0]["key"]
-    assert ex.overview(data, nav) and ex.arm_view(data, nav, "a") and ex.game_view(data, nav, "a", key)
+    assert ex.overview(data, nav) and ex.arm_view(data, nav, "a", []) and ex.game_view(data, nav, "a", key)
     assert ex.piece_view(data, nav, "a", key, 1)
     ex.build(data)
+    two = ex.Data(index.arms(None, [f"a={game.parent}", f"b={game.parent}"]), tmp_path / "cache")
+    for narrow in (False, True):
+        nav = ex.Nav(two, {}, narrow)
+        assert ex.arm_view(two, nav, "a", ["b"]) and ex.overview(two, nav) and ex.game_view(two, nav, "b", key)
+    with pytest.raises(KeyError):
+        ex.arm_view(two, nav, "a", ["nobody"])
 
 
 def test_signed_thinking_blocks_are_not_shown_and_the_words_are():

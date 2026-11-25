@@ -75,13 +75,15 @@ def link(**q) -> str:
     return "/?" + urlencode(q, safe="~") if q else "/"
 
 
+MOST = 4                               # arms side by side
 SHOW = {"ladders": "full ladder", "performance": "best performance", "cost": "cost frontier"}
 
 
 class Nav:
     """The first page's choices (which arms, which tokens), read from the address and carried by every link from it."""
 
-    def __init__(self, data: "Data", q: dict[str, str]):
+    def __init__(self, data: "Data", q: dict[str, str], narrow: bool = False):
+        self.narrow = narrow                          # a phone-sized window: the figures are laid out for it
         self.all = list(data.arms)
         named = set(q.get("only", q.get("hide", "")).split("~"))
         self.names = [n for n in self.all if (n in named if "only" in q else n not in named)]
@@ -97,11 +99,17 @@ class Nav:
                     show=show if show != "ladders" else None)
 
 
-def layout(fig: go.Figure, height: int, **kw) -> go.Figure:
+def layout(fig: go.Figure, height: int, narrow: bool = False, **kw) -> go.Figure:
+    if narrow:                                       # a finger's drag scrolls the page instead of zooming the plot
+        kw["dragmode"] = False
     fig.update_layout(height=height, margin=dict(l=56, r=12, t=14, b=44), paper_bgcolor=SURFACE, plot_bgcolor=SURFACE,
                       font=dict(color=MUTED, size=12), showlegend=False, hoverlabel=dict(align="left"), **kw)
     fig.update_xaxes(gridcolor=GRID, zeroline=False)
     fig.update_yaxes(gridcolor=GRID, zeroline=False)
+    if narrow:
+        fig.update_layout(margin=dict(l=40, r=6), font=dict(size=11))
+        fig.update_xaxes(fixedrange=True)
+        fig.update_yaxes(fixedrange=True, title_standoff=2)
     return fig
 
 
@@ -124,7 +132,7 @@ def one_per_model(data: Data, names: list[str], stat: str, show: str) -> list[st
     return list(best.values())
 
 
-def place_labels(points: list[tuple[float, float]], texts: list[str], bars: list[tuple[float, float]]) -> list[str]:
+def place_labels(points: list[tuple[float, float]], texts: list[str], bars: list[tuple[float, float]], right: float = 1e9) -> list[str]:
     """A side for each label (plotly textposition) that keeps it off the other labels, points and error bars. Coordinates
     are pixels, y down, for a plot of about the usual width; a much narrower window can still collide. Greedy, in order."""
     sides = {"bottom right": (0, 1), "top right": (0, -1), "middle right": (0, 0), "bottom left": (-1, 1), "top left": (-1, -1),
@@ -140,13 +148,14 @@ def place_labels(points: list[tuple[float, float]], texts: list[str], bars: list
             x0 = x - 8 - w if left else x + 8
             y0 = {1: y + 4, -1: y - 17, 0: y - 6}[down]
             return (x0, y0, x0 + w, y0 + 13)
-        best = min(sides, key=lambda q: (round(sum(3 * area(box(q), b) for b in placed) + sum(area(box(q), b) for b in fixed)), list(sides).index(q)))
+        best = min(sides, key=lambda q: (round(sum(3 * area(box(q), b) for b in placed) + sum(area(box(q), b) for b in fixed)
+                                          + 200 * (max(0, box(q)[2] - right) + max(0, -box(q)[0]))), list(sides).index(q)))
         placed.append(box(best))
         out.append(best)
     return out
 
 
-def burden_figure(data: Data, names: list[str], stat: str, show: str) -> go.Figure:
+def burden_figure(data: Data, names: list[str], stat: str, show: str, narrow: bool = False) -> go.Figure:
     fig = go.Figure()
     if show != "ladders":
         names = one_per_model(data, names, stat, show)
@@ -163,16 +172,19 @@ def burden_figure(data: Data, names: list[str], stat: str, show: str) -> go.Figu
         if head:
             text |= dict(zip(ns, rest))
             text[ns[-1]] = f"<b>{head}</b> {rest[-1]}"
+            if narrow:                               # room for the ladder's name only
+                text |= {n: "" for n in ns[:-1]} | {ns[-1]: f"<b>{head}</b>"}
     A = [data.arms[n] for n in names]
     every = data.arms.values()                       # one range for every choice, so nothing moves when arms or the view change
     lo, hi = (np.log10(f(x[stat] for x in every)) for f in (min, max))
-    xr, yr = [lo - .06, hi + .22], [max(x["ci"][1] for x in every) + 1, -.6]
-    px = lambda t, b: (1100 * (np.log10(t) - xr[0]) / (xr[1] - xr[0]), 450 * (b - yr[1]) / (yr[0] - yr[1]))
+    xr, yr = [lo - .06, hi + (.1 if narrow else .22)], [max(x["ci"][1] for x in every) + 1, -.6]
+    wide = 284 if narrow else 1100
+    px = lambda t, b: (wide * (np.log10(t) - xr[0]) / (xr[1] - xr[0]), 450 * (b - yr[1]) / (yr[0] - yr[1]))
     few = len(names) <= 30
     fig.add_scatter(
         x=[a[stat] for a in A], y=[a["burden"] for a in A], mode="markers+text" if few else "markers", text=[text[n] for n in names],
         textposition=place_labels([px(a[stat], a["burden"]) for a in A], [text[n] for n in names],
-                                  [(px(1, a["ci"][0])[1], px(1, a["ci"][1])[1]) for a in A]), textfont=dict(size=10, color=INK), customdata=names,
+                                  [(px(1, a["ci"][0])[1], px(1, a["ci"][1])[1]) for a in A], wide if narrow else 1e9), textfont=dict(size=10, color=INK), customdata=names,
         marker=dict(size=11, color=PLAN, line=dict(color=SURFACE, width=2)),
         error_y=dict(type="data", symmetric=False, array=[a["ci"][1] - a["burden"] for a in A],
                      arrayminus=[a["burden"] - a["ci"][0] for a in A], color=PLAN, thickness=1.3, width=4),
@@ -183,25 +195,36 @@ def burden_figure(data: Data, names: list[str], stat: str, show: str) -> go.Figu
                      ticktext=[f"{t * 10 ** e / 1000:g}k" for e in range(2, 6) for t in (1, 2, 5)])
     fig.update_xaxes(range=xr)
     fig.update_yaxes(title="burden (up is better)", range=yr)
-    return layout(fig, 520)
+    return layout(fig, 460 if narrow else 520, narrow)
 
 
-def games_figure(data: Data, names: list[str]) -> go.Figure:
-    fig, rng = go.Figure(), np.random.default_rng(0)
+def games_figure(data: Data, names: list[str], narrow: bool = False) -> go.Figure:
+    """Every game's burden, one column per arm; on a phone one row per arm, with best on the right."""
+    fig, rng, jit = go.Figure(), np.random.default_rng(0), .22 if narrow else .22 * min(1, len(names) / 8)
+    place = (lambda at, b: dict(x=b, y=at)) if narrow else (lambda at, b: dict(x=at, y=b))
     for survived, symbol, color, what in ((True, "square-open", PLAN, "reached the end"),
                                           (False, "circle-open", EXEC, "topped out")):
         rows = [(i, n, g) for i, n in enumerate(names) for g in data.arms[n]["games"] if g["survived"] == survived]
-        fig.add_scatter(x=[i + rng.uniform(-.22, .22) for i, _, _ in rows], y=[g["burden"] for *_, g in rows],
+        fig.add_scatter(**place([i + rng.uniform(-jit, jit) for i, _, _ in rows], [g["burden"] for *_, g in rows]),
                         mode="markers", marker=dict(symbol=symbol, color=color, size=8, line=dict(width=1.5)),
                         customdata=[[n, g["key"]] for _, n, g in rows], hoverinfo="text",
                         hovertext=[f"<b>{n}</b><br>game {g['key']}: {what}<br>burden {g['burden']:.2f}, {len(g['pieces'])} "
                                    f"pieces, {g['lines']} lines" for _, n, g in rows])
-    fig.add_scatter(x=list(range(len(names))), y=[data.arms[n]["burden"] for n in names], mode="markers", hoverinfo="skip",
-                    marker=dict(symbol="line-ew-open", size=22, color=INK, line=dict(width=2.5)))
-    fig.update_xaxes(tickvals=list(range(len(names))), ticktext=names, tickangle=-50, automargin=False, range=[-.6, len(names) - .4])
+    fig.add_scatter(**place(list(range(len(names))), [data.arms[n]["burden"] for n in names]), mode="markers", hoverinfo="skip",
+                    marker=dict(symbol="line-ns-open" if narrow else "line-ew-open", size=14 if narrow else 22, color=INK, line=dict(width=2.5)))
+    at = dict(tickvals=list(range(len(names))), ticktext=names)
+    if narrow:
+        fig.update_yaxes(**at, range=[len(names) - .4, -.6], automargin=False)
+        fig.update_xaxes(title="burden (right is better)", autorange="reversed")
+        layout(fig, 90 + 30 * len(names), True)
+        fig.update_layout(margin=dict(l=158))
+        fig.update_yaxes(tickfont=dict(size=10))
+        return fig
+    slant = len(names) > 6
+    fig.update_xaxes(**at, tickangle=-50 if slant else 0, automargin=False, range=[-.6, len(names) - .4])
     fig.update_yaxes(title="burden", autorange="reversed")
-    layout(fig, 440)
-    fig.update_layout(margin=dict(b=150, l=110))
+    layout(fig, 440 if slant else 320)
+    fig.update_layout(margin=dict(b=150, l=110) if slant else dict(b=44))
     return fig
 
 
@@ -262,7 +285,7 @@ def fingerprints(data: Data, names: list[str]) -> go.Figure:
                 hs.append(f"<b>{n}</b><br>{v:.1%} of pieces took {k}{'+' if k == REPLIES else ''} replies")
     fig.add_bar(x=xs, y=ys, base=bs, width=.88, marker=dict(color=PIECE), hovertext=hs, hoverinfo="text", row=1, col=4)
     for col, key in ((5, "truncated"), (6, "nudged")):
-        top = max(decisions.rates(both[n][ph])[key] for n in names for ph in (0, 1)) or 1
+        top = max(.01, *(decisions.rates(both[n][ph])[key] for n in names for ph in (0, 1)))
         for ph, off, color in ((0, .2, PLAN), (1, -.2, EXEC)):
             v = [decisions.rates(both[n][ph])[key] for n in names]
             fig.add_bar(x=v, y=[rows[n] + off for n in names], orientation="h", width=.3, marker=dict(color=color),
@@ -271,7 +294,7 @@ def fingerprints(data: Data, names: list[str]) -> go.Figure:
                         row=1, col=col)
         fig.update_xaxes(range=[0, top * 1.9], showticklabels=False, showgrid=False, row=1, col=col)
     layout(fig, 90 + 74 * len(names), barmode="overlay")
-    fig.update_layout(margin=dict(l=190, t=40))
+    fig.update_layout(margin=dict(l=190, t=40, r=12))
     fig.update_annotations(font=dict(size=13, color=INK))
     fig.update_yaxes(tickvals=list(rows.values()), ticktext=names, range=[-len(names) + .45, .55], showgrid=False)
     caps = sorted({c for n in names for g in data.arms[n]["games"] if (c := g["sampler"].get("max_tokens"))})
@@ -284,15 +307,25 @@ def fingerprints(data: Data, names: list[str]) -> go.Figure:
     return fig
 
 
-def moves_figure(games: list[dict]) -> go.Figure:
-    moves = [(p["cleared"], p["sealing"]) for g in games for p in g["pieces"] if p["sealing"] is not None]
+def moves_of(games: list[dict]) -> list[tuple[int, int]]:
+    return [(p["cleared"], p["sealing"]) for g in games for p in g["pieces"] if p["sealing"] is not None]
+
+
+def moves_scale(groups: list[list[dict]]) -> tuple[int, int, float, float]:
+    """The sealed-cells range and the log share range that every one of these arms' moves are drawn on."""
+    every = [moves_of(g) for g in groups]
+    ys = [y for m in every for _, y in m] or [0]
+    shares = [np.log10(c / len(m)) for m in every if m for c in Counter(m).values()] or [0]
+    return min(0, *ys), max(0, *ys), min(shares), max(shares)
+
+
+def moves_figure(games: list[dict], scale: tuple, narrow: bool = False) -> go.Figure:
+    moves, (y0, y1, z0, z1) = moves_of(games), scale
     n = Counter(moves)
-    ys = [s for _, s in moves] or [0]
-    y0, y1 = min(0, *ys), max(0, *ys)
-    z = [[np.log10(n[x, y]) if n[x, y] else None for x in range(5)] for y in range(y0, y1 + 1)]
+    z = [[np.log10(n[x, y] / len(moves)) if n[x, y] else None for x in range(5)] for y in range(y0, y1 + 1)]
     text = [[f"{x} lines, {y:+d} sealed cells<br>{n[x, y]} of {len(moves)} placements" for x in range(5)] for y in range(y0, y1 + 1)]
-    fig = go.Figure(go.Heatmap(z=z, x=list(range(5)), y=list(range(y0, y1 + 1)), colorscale=RAMP, showscale=False, xgap=2,
-                               ygap=1, text=text, hovertemplate="%{text}<extra></extra>"))
+    fig = go.Figure(go.Heatmap(z=z, x=list(range(5)), y=list(range(y0, y1 + 1)), zmin=z0, zmax=z1, colorscale=RAMP, showscale=False,
+                               xgap=2, ygap=1, text=text, hovertemplate="%{text}<extra></extra>"))
     head = max(3, .12 * (y1 - y0))
     for x in range(5):
         s = [b for a, b in moves if a == x]
@@ -300,7 +333,7 @@ def moves_figure(games: list[dict]) -> go.Figure:
             fig.add_annotation(x=x, y=y1 + head / 2, text=f"{np.mean(s):+.2f}<br>n={len(s)}", showarrow=False, font=dict(size=11, color=INK))
     fig.update_xaxes(title="lines cleared", dtick=1, range=[-.6, 4.6])
     fig.update_yaxes(title="sealed cells added (- dug out)", range=[y0 - 1, y1 + head + 1])
-    return layout(fig, 400)
+    return layout(fig, 400, narrow)
 
 
 def nums(*pairs):
@@ -329,6 +362,17 @@ def graph(figure: go.Figure, **kw):
     return dcc.Graph(figure=figure, config=NOBAR, style={"height": figure.layout.height}, **kw)
 
 
+def wide_graph(figure: go.Figure, nav: "Nav"):
+    """A figure that needs its width: on a phone it scrolls sideways inside its card."""
+    if not nav.narrow:
+        return graph(figure)
+    figure.update_layout(width=960, dragmode=False)
+    figure.update_xaxes(fixedrange=True)
+    figure.update_yaxes(fixedrange=True)
+    return html.Div([html.P("Swipe sideways. These read best on a larger screen, where the columns line up in one view.", className="steer"),
+                     html.Div(graph(figure), className="sideways")])
+
+
 def readable(text: str) -> str:
     """The model's words, without the encoded blocks an Anthropic proxy appends to carry signed thinking between turns."""
     return re.sub(r"\s*\[anthropic-blocks:[^\]]*\]", "", text)
@@ -351,6 +395,8 @@ def overview(data: Data, nav: Nav):
     if not names:
         return html.Div("No arm selected: choose some on the left.", className="card")
     return [
+        dcc.Link(f"Compare these {len(names)} side by side", href=nav.to(arm=names[0], vs="~".join(names[1:])), className="btn go")
+        if 2 <= len(names) <= MOST else None,
         card("Burden against thinking", "Burden: dead rows averaged over every turn of the game, a turn after the game ended "
              "counting as 20. Bars: 95% interval of the mean, resampling games. Full ladder: every arm, a line "
              "joining each effort ladder. Best performance: each model's lowest burden. Cost frontier: each model's arm nearest the top left "
@@ -358,41 +404,65 @@ def overview(data: Data, nav: Nav):
              html.Div([segments("show", SHOW, nav.show),
                        segments("stat", {"mean": "mean tokens", "median": "median tokens"}, stat)],
                       className="ctl"),
-             graph(burden_figure(data, names, stat, nav.show), id={"kind": "to-arm", "i": 0})),
+             graph(burden_figure(data, names, stat, nav.show, nav.narrow), id={"kind": "to-arm", "i": 0})),
         card("Every game", "Squares reached the end, circles topped out, the dash is the mean. Click a game.",
-             graph(games_figure(data, names), id={"kind": "to-game", "i": 0})),
+             graph(games_figure(data, names, nav.narrow), id={"kind": "to-game", "i": 0})),
         card("How each arm decides", "Blue, up: planning replies. Orange, down: execution replies. Black: truncated. Each is a share of "
              "its own phase. Tokens are scaled to each half's tallest bar, calls to one scale for all arms drawn.",
              html.Div(["buttons: "] + [html.Span([html.I(style={"background": c}), v], className="key") for v, c in zip(VERBS, VERB_COLORS)]),
-             graph(fingerprints(data, names)))]
+             wide_graph(fingerprints(data, names), nav))]
 
 
-def arm_view(data: Data, nav: Nav, name: str):
-    a = data.arms[name]
-    payload = {"games": [dict(boards=[p["board"] for p in g["pieces"]], live=[p["live"] for p in g["pieces"]],
-                              dead=[p["dead"] for p in g["pieces"]], lines=[p["lines"] for p in g["pieces"]],
-                              survived=g["survived"]) for g in a["games"]]}
-    boards = [dcc.Link([html.Canvas(id=f"b-{i}", width=80, height=160), html.Span(id=f"t-{i}")], id=f"g-{i}",
-                       href=nav.to(arm=name, game=g["key"])) for i, g in enumerate(a["games"])]
-    return [
-        crumbs(("All arms", nav.to()), (name, None)),
-        html.Div(nums(("burden", f"{a['burden']:.2f}"), ("95% interval", f"{a['ci'][0]:.2f} to {a['ci'][1]:.2f}"),
-                      ("tokens per piece, mean", f"{a['mean']:,.0f}"), ("median", f"{a['median']:,.0f}"),
-                      ("reached the end", f"{a['reached']} of {len(a['games'])}")), className="card"),
-        html.Div([html.H2("Its games, together"), html.P("Every game at the same piece, best burden first. Orange cells are sealed. "
-                  "Faded games have ended. Click one."),
-                  html.Div([html.Button("Play", id="play", className="btn"), html.B(id="k-label"),
-                            html.Div(dcc.Slider(1, data.turns, 1, value=min(40, data.turns), id="k", marks=None, updatemode="drag"), className="grow")], className="ctl"),
-                  html.Div(boards, className="boards"),
-                  dcc.Store(id="arm-data", data=payload), dcc.Interval(id="tick", interval=200, disabled=True)], className="card"),
-        html.Div([card("The triangle", "Boards spawned so far, by live and dead rows (log colour). Rings: games still going.",
-                       dcc.Graph(id="triangle", config=NOBAR, style={"height": 400})),
-                  card("Its moves", "Each placement: lines cleared against sealed cells added. Numbers: the column's mean and count.",
-                       graph(moves_figure(a["games"])))], className="row"),
-        card("How it decides", "Planning up, execution down, as on the first page.", graph(fingerprints(data, [name])))]
+def arm_view(data: Data, nav: Nav, name: str, vs: list[str]):
+    """One arm, or up to MOST of them side by side on one scrubber and one scale."""
+    names = list(dict.fromkeys([name, *vs]))[:MOST]
+    arms = [data.arms[n] for n in names]
+    several = len(names) > 1
+    payload = {"arms": [{"games": [dict(boards=[p["board"] for p in g["pieces"]], live=[p["live"] for p in g["pieces"]],
+                                        dead=[p["dead"] for p in g["pieces"]], lines=[p["lines"] for p in g["pieces"]],
+                                        survived=g["survived"]) for g in a["games"]]} for a in arms]}
+    size = 50 if several or nav.narrow else 80
+    scale = moves_scale([a["games"] for a in arms])
+
+    def column(j, n, a):
+        boards = [dcc.Link([html.Canvas(id=f"b-{j}-{i}", width=size, height=2 * size), html.Span(id=f"t-{j}-{i}")], id=f"g-{j}-{i}",
+                           href=nav.to(arm=n, game=g["key"])) for i, g in enumerate(a["games"])]
+        return boards, dcc.Graph(id={"kind": "triangle", "i": j}, config=NOBAR, style={"height": 400}), \
+            graph(moves_figure(a["games"], scale, nav.narrow)), \
+            nums(("burden", f"{a['burden']:.2f}"), ("95% interval", f"{a['ci'][0]:.2f} to {a['ci'][1]:.2f}"),
+                 ("tokens per piece, mean", f"{a['mean']:,.0f}"), ("median", f"{a['median']:,.0f}"),
+                 ("reached the end", f"{a['reached']} of {len(a['games'])}"))
+    cols = [column(j, n, a) for j, (n, a) in enumerate(zip(names, arms))]
+    others = [n for n in data.arms if n != name]
+    head = [crumbs(("All arms", nav.to()), (" vs ".join(names), None)),
+            html.Div([html.Span("compare with"), dcc.Dropdown(others, names[1:], id="vs", multi=True, placeholder="another arm")], className="versus")]
+    ctl = html.Div([html.Button("Play", id="play", className="btn"), html.B(id="k-label"),
+                    html.Div(dcc.Slider(1, data.turns, 1, value=min(40, data.turns), id="k", marks=None, updatemode="drag"), className="grow"),
+                    dcc.Store(id="arm-data", data=payload), dcc.Interval(id="tick", interval=200, disabled=True)], className="ctl scrub")
+    about = ("Every game at the same piece, best burden first. Orange cells are sealed. Faded games have ended. Click one.")
+    triangle = "Boards spawned so far, by live and dead rows (log colour, share of the arm's pieces). Rings: games still going."
+    moves = "Each placement: lines cleared against sealed cells added. Numbers: the column's mean and count."
+    how = card("How it decides" if not several else "How they decide", "Planning up, execution down, as on the first page.", wide_graph(fingerprints(data, names), nav))
+    if not several:
+        boards, tri, mv, numbers = cols[0]
+        return head + [html.Div(numbers, className="card"),
+                       html.Div([html.H2("Its games, together"), html.P(about), ctl, html.Div(boards, className="boards" + (" small" if nav.narrow else ""))], className="card"),
+                       html.Div([card("The triangle", triangle, tri), card("Its moves", moves, mv)], className="row"), how]
+    title = lambda n, j: html.H2(dcc.Link(n, href=nav.to(arm=n)))
+    side = lambda cells: html.Div([html.Div([title(n, j), *([c] if not isinstance(c, list) else c)], className="card")
+                                   for j, (n, c) in enumerate(zip(names, cells))], className=f"side n{len(names)}")
+    return head + [
+        html.P("Arms are stacked here; a larger screen puts them beside each other.", className="steer") if nav.narrow else None,
+        side([c[3] for c in cols]),
+        card("Every game", "Squares reached the end, circles topped out, the dash is the mean. Click a game.",
+             graph(games_figure(data, names, nav.narrow), id={"kind": "to-game", "i": 0})),
+        html.Div([html.P(about), ctl], className="card stick"),
+        side([html.Div(c[0], className="boards small") for c in cols]),
+        html.P(triangle, className="note"), side([c[1] for c in cols]),
+        html.P(moves + " One scale for all.", className="note"), side([c[2] for c in cols]), how]
 
 
-def game_figure(g: dict) -> go.Figure:
+def game_figure(g: dict, narrow: bool = False) -> go.Figure:
     ps = g["pieces"]
     fig = make_subplots(2, 1, shared_xaxes=True, vertical_spacing=.06, row_heights=[.6, .4])
     x = [p["piece"] for p in ps]
@@ -413,7 +483,7 @@ def game_figure(g: dict) -> go.Figure:
     fig.update_yaxes(title="tokens", row=1, col=1)
     fig.update_yaxes(title="dead + live rows", range=[0, 20], row=2, col=1)
     fig.update_xaxes(title="piece", row=2, col=1)
-    return layout(fig, 480, barmode="stack")
+    return layout(fig, 420 if narrow else 480, narrow, barmode="stack")
 
 
 def game_view(data: Data, nav: Nav, name: str, key: str):
@@ -429,8 +499,8 @@ def game_view(data: Data, nav: Nav, name: str, key: str):
                       ("ended", "reached the end" if g["survived"] else "topped out"),
                       ("truncated replies", sum(p["truncated"] for p in g["pieces"])), ("nudges", sum(p["nudged"] for p in g["pieces"]))), className="card"),
         card("Tokens, and the board", "Blue planning, orange execution; crosses truncated, red triangles nudged. Below: dead (orange) and live (pale) rows "
-             "on the board each piece spawned into. Click a piece.", dcc.Graph(id={"kind": "to-piece", "i": f"{name}|{key}"}, figure=game_figure(g), config=NOBAR)),
-        card("Every board", "As each piece spawned. Click one.", html.Div(boards, className="boards"),
+             "on the board each piece spawned into. Click a piece.", dcc.Graph(id={"kind": "to-piece", "i": f"{name}|{key}"}, figure=game_figure(g, nav.narrow), config=NOBAR)),
+        card("Every board", "As each piece spawned. Click one.", html.Div(boards, className="boards" + (" small" if nav.narrow else "")),
              dcc.Store(id="boards-data", data=[[f"p-{p['piece']}", p["board"]] for p in g["pieces"]]), html.Span(id="boards-sink"))]
 
 
@@ -474,13 +544,14 @@ def piece_view(data: Data, nav: Nav, name: str, key: str, number: int):
         html.Div(step, className="ctl"),
         html.Div([nums(("lines cleared", p["cleared"]), ("sealed cells", seal), ("planning tokens", f"{p['tokens'][0]:,}"),
                        ("execution tokens", f"{p['tokens'][1]:,}"), ("replies", sum(p["replies"])), ("presses", len(p["presses"]))),
-                  html.Div(pair, className="row", style={"marginTop": 14})], className="card"),
+                  html.Div(pair, className="pair")], className="card"),
         html.Div([html.H2("Its replies"), html.P("Blue: planning. Orange: execution. Boards are what it was shown before each press; grey is the falling piece."),
                   *body, dcc.Store(id="boards-data", data=draw), html.Span(id="boards-sink")], className="card")]
 
 
 def build(data: Data) -> dash.Dash:
     app = dash.Dash(__name__, title="Topout Explorer", suppress_callback_exceptions=True, update_title=None,
+                    meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
                     assets_folder=str(Path(__file__).parent / "topout" / "explore_assets"))
     groups: dict[str, list[str]] = {}
     for n, a in data.arms.items():
@@ -497,7 +568,9 @@ def build(data: Data) -> dash.Dash:
                                   id={"kind": "pick", "i": i}, inline=True, className="model-one" if len(groups[m]) == 1 else ""))
     if data.skipped:
         rail.append(html.P(f"{data.skipped} games still running, skipped"))
-    app.layout = html.Div([dcc.Location(id="url"), html.Div(rail, id="rail"), html.Div(id="main")], id="app")
+    app.layout = html.Div([dcc.Location(id="url", refresh="callback-nav"), dcc.Store(id="narrow"),
+                           html.Div([dcc.Link("Topout Explorer", href="/"), html.Button("Choose arms", id="menu", className="btn")], id="bar"),
+                           html.Div(rail, id="rail"), html.Div(id="main")], id="app")
 
     # the address is the only state: the rail shows it, and changing the rail changes it
     @app.callback(Output({"kind": "pick", "i": ALL}, "value"), Input("url", "search"), State({"kind": "pick", "i": ALL}, "value"))
@@ -514,20 +587,29 @@ def build(data: Data) -> dash.Dash:
         names = nav.all if by == "all" else [] if by == "none" else [n for n in nav.all if n in picked]
         return dash.no_update if names == nav.names else nav.to(names)[1:]
 
-    @app.callback(Output("main", "children"), Input("url", "search"))
-    def show(search):
+    @app.callback(Output("main", "children"), Input("url", "search"), Input("narrow", "data"))
+    def show(search, narrow):
+        if narrow is None:                                       # the window's size is not known yet
+            return dash.no_update
         q = query(search)
-        nav = Nav(data, q)
+        nav = Nav(data, q, narrow)
         try:
             if "piece" in q:
                 return piece_view(data, nav, q["arm"], q["game"], int(q["piece"]))
             if "game" in q:
                 return game_view(data, nav, q["arm"], q["game"])
             if "arm" in q:
-                return arm_view(data, nav, q["arm"])
+                return arm_view(data, nav, q["arm"], [n for n in q.get("vs", "").split("~") if n])
         except (KeyError, ValueError):
             return html.Div(["Nothing at this address: ", dcc.Link("all arms", href="/")], className="card")
         return overview(data, nav)
+
+    @app.callback(Output("url", "search", allow_duplicate=True), Input("vs", "value"), State("url", "search"), prevent_initial_call=True)
+    def versus(value, search):
+        q = query(search)
+        if "arm" not in q or "~".join(value or []) == q.get("vs", ""):
+            return dash.no_update
+        return Nav(data, q).to(arm=q["arm"], vs="~".join((value or [])[:MOST - 1]))[1:]
 
     @app.callback(Output("url", "search", allow_duplicate=True), Input("stat", "value"), Input("show", "value"), State("url", "search"),
                   prevent_initial_call=True)
@@ -551,12 +633,16 @@ def build(data: Data) -> dash.Dash:
         return nav.to(arm=name, game=key, piece=c)[1:]
 
     js = lambda f: ClientsideFunction("topout", f)
-    app.clientside_callback(js("arm"), Output("triangle", "figure"), Output("k-label", "children"), Input("k", "value"), Input("arm-data", "data"))
+    app.clientside_callback(js("arm"), Output({"kind": "triangle", "i": ALL}, "figure"), Output("k-label", "children"), Input("k", "value"), Input("arm-data", "data"),
+                            State({"kind": "triangle", "i": ALL}, "id"))
     app.clientside_callback(js("toggle"), Output("tick", "disabled"), Output("play", "children"), Output("k", "value"),
                             Input("play", "n_clicks"), State("tick", "disabled"), State("k", "value"), State("k", "max"))
     app.clientside_callback(js("step"), Output("k", "value", allow_duplicate=True), Output("tick", "disabled", allow_duplicate=True),
                             Output("play", "children", allow_duplicate=True), Input("tick", "n_intervals"), State("k", "value"),
                             State("tick", "disabled"), State("k", "max"), prevent_initial_call=True)
+    app.clientside_callback(js("narrow"), Output("narrow", "data"), Input("url", "pathname"))
+    app.clientside_callback(js("top"), Output("bar", "title"), Input("url", "search"))
+    app.clientside_callback(js("menu"), Output("menu", "title"), Input("menu", "n_clicks"), prevent_initial_call=True)
     app.clientside_callback(js("boards"), Output("boards-sink", "children"), Input("boards-data", "data"))
     return app
 
