@@ -132,7 +132,7 @@ data fault: every one of the 293 top-outs ends on such a board, so the last boar
 occupied. No change in sealed cells is read into or out of one, because the falling piece is in that board.
 
 Know what that does. The spawned piece is in the top row, so **every top-out's last board reads as exactly 20 rows, by
-construction**: its marker sits on the line because of the rule. Without the piece those stacks are 18 (30 games), 19 (137)
+construction**: its marker sits on the line because of the rule. Without the piece those stacks are 18 (29 games), 19 (138)
 or 20 (126) rows tall, so "a lost game ends at the top" is real and "exactly on the line" is not a finding. The rule also
 applies to 172 earlier overlapping boards, where the game went on and only some of the four cells were stack; working out
 which from the next board is the refinement, not built. It all changes an arm's burden by 0.018 at most.
