@@ -75,6 +75,9 @@ def link(**q) -> str:
     return "/?" + urlencode(q, safe="~") if q else "/"
 
 
+SHOW = {"ladders": "full ladder", "performance": "best performance", "cost": "cost frontier"}
+
+
 class Nav:
     """The first page's choices (which arms, which tokens), read from the address and carried by every link from it."""
 
@@ -83,13 +86,15 @@ class Nav:
         named = set(q.get("only", q.get("hide", "")).split("~"))
         self.names = [n for n in self.all if (n in named if "only" in q else n not in named)]
         self.stat = "median" if q.get("stat") == "median" else "mean"
+        self.show = q["show"] if q.get("show") in SHOW else "ladders"
 
-    def to(self, names: list[str] | None = None, stat: str | None = None, **q) -> str:
-        names, stat = self.names if names is None else names, stat or self.stat
+    def to(self, names: list[str] | None = None, stat: str | None = None, show: str | None = None, **q) -> str:
+        names, stat, show = self.names if names is None else names, stat or self.stat, show or self.show
         chosen = set(names)
         gone = [n for n in self.all if n not in chosen]
         kept = ({"only": "~".join(names) or "~"} if len(names) < len(gone) else {"hide": "~".join(gone)}) if gone else {}
-        return link(**q, **kept, stat=stat if stat == "median" else None)
+        return link(**q, **kept, stat=stat if stat == "median" else None,
+                    show=show if show != "ladders" else None)
 
 
 def layout(fig: go.Figure, height: int, **kw) -> go.Figure:
@@ -100,17 +105,38 @@ def layout(fig: go.Figure, height: int, **kw) -> go.Figure:
     return fig
 
 
-def burden_figure(data: Data, names: list[str], stat: str) -> go.Figure:
+def one_per_model(data: Data, names: list[str], stat: str, show: str) -> list[str]:
+    """One arm of each model. performance: its lowest burden. cost: its arm nearest the top left corner, no burden at the
+    fewest tokens of any arm; both axes run 0 to 1 over every arm loaded (tokens in log), not only those shown, so choosing
+    arms never moves the corner or the scale."""
+    every = data.arms.values()
+    lo, hi = min(np.log(a[stat]) for a in every), max(np.log(a[stat]) for a in every)
+    top = max(a["burden"] for a in every) or 1
+
+    def far(n):
+        a = data.arms[n]
+        return a["burden"] if show == "performance" else np.hypot((np.log(a[stat]) - lo) / ((hi - lo) or 1), a["burden"] / top)
+    best: dict[str, str] = {}
+    for n in names:
+        m = data.arms[n]["arm"].model
+        if m not in best or far(n) < far(best[m]):
+            best[m] = n
+    return list(best.values())
+
+
+def burden_figure(data: Data, names: list[str], stat: str, show: str) -> go.Figure:
     fig = go.Figure()
+    if show != "ladders":
+        names = one_per_model(data, names, stat, show)
     ladders: dict = {}
     for n in names:
         if data.arms[n]["arm"].ladder is not None:
             ladders.setdefault(data.arms[n]["arm"].ladder, []).append(n)
-    for ns in ladders.values():
+    for ns in ladders.values() if show == "ladders" else ():
         fig.add_scatter(x=[data.arms[n][stat] for n in ns], y=[data.arms[n]["burden"] for n in ns], mode="lines",
                         line=dict(color=PLAN, width=2), opacity=0.35, hoverinfo="skip")
     text = {n: n for n in names}
-    for ns in ladders.values():
+    for ns in ladders.values() if show == "ladders" else ():
         head, rest = shared(ns)
         if head:
             text |= dict(zip(ns, rest))
@@ -128,7 +154,10 @@ def burden_figure(data: Data, names: list[str], stat: str) -> go.Figure:
                    for n, a in zip(names, A)], hoverinfo="text")
     fig.update_xaxes(type="log", title=f"completion tokens per piece, {stat} (log)", tickvals=[t * 10 ** e for e in range(2, 6) for t in (1, 2, 5)],
                      ticktext=[f"{t * 10 ** e / 1000:g}k" for e in range(2, 6) for t in (1, 2, 5)])
-    fig.update_yaxes(title="burden (up is better)", autorange="reversed")
+    every = data.arms.values()                       # one range for every choice, so nothing moves when arms or the view change
+    lo, hi = (np.log10(f(x[stat] for x in every)) for f in (min, max))
+    fig.update_xaxes(range=[lo - .06, hi + .22])
+    fig.update_yaxes(title="burden (up is better)", range=[max(x["ci"][1] for x in every) + 1, -.6])
     return layout(fig, 520)
 
 
@@ -253,6 +282,11 @@ def nums(*pairs):
     return html.Div([html.Div([str(v), html.Span(k)]) for k, v in pairs], className="nums")
 
 
+def segments(id: str, options: dict[str, str], value: str):
+    """A segmented control: a radio whose labels are the segments (style.css, .segments)."""
+    return dcc.RadioItems([{"label": v, "value": k} for k, v in options.items()], value, id=id, inline=True, className="segments")
+
+
 def card(title, note, *body):
     return html.Div([html.H2(title), html.P(note), *body], className="card")
 
@@ -271,8 +305,8 @@ def graph(figure: go.Figure, **kw):
 
 
 def readable(text: str) -> str:
-    """Text with every unbroken run of 400 or more characters (an engine's encoded blob) folded to its length."""
-    return re.sub(r"\S{400,}", lambda m: f"[{len(m[0]):,} unbroken characters folded]", text)
+    """The model's words, without the encoded blocks an Anthropic proxy appends to carry signed thinking between turns."""
+    return re.sub(r"\s*\[anthropic-blocks:[^\]]*\]", "", text)
 
 
 def shared(names: list[str]) -> tuple[str, list[str]]:
@@ -293,9 +327,13 @@ def overview(data: Data, nav: Nav):
         return html.Div("No arm selected: choose some on the left.", className="card")
     return [
         card("Burden against thinking", "Burden: dead rows averaged over every turn of the game, a turn after the game ended "
-             "counting as 20. Bars: 95% interval of the mean, resampling games. Lines: effort ladders. Click an arm.",
-             dcc.RadioItems(["mean", "median"], stat, id="stat", inline=True),
-             graph(burden_figure(data, names, stat), id={"kind": "to-arm", "i": 0})),
+             "counting as 20. Bars: 95% interval of the mean, resampling games. Full ladder: every arm, a line "
+             "joining each effort ladder. Best performance: each model's lowest burden. Cost frontier: each model's arm nearest the top left "
+             "corner, burden and tokens (log) weighing alike. One per model is chosen among the arms ticked on the left. Click an arm.",
+             html.Div([segments("show", SHOW, nav.show),
+                       segments("stat", {"mean": "mean tokens", "median": "median tokens"}, stat)],
+                      className="ctl"),
+             graph(burden_figure(data, names, stat, nav.show), id={"kind": "to-arm", "i": 0})),
         card("Every game", "Squares reached the end, circles topped out, the dash is the mean. Click a game.",
              graph(games_figure(data, names), id={"kind": "to-game", "i": 0})),
         card("How each arm decides", "Blue, up: planning replies. Orange, down: execution replies. Black: truncated. Each is a share of "
@@ -380,6 +418,7 @@ def piece_view(data: Data, nav: Nav, name: str, key: str, number: int):
     p, draw, body = ps[at], [], []
     after = ps[at + 1] if at + 1 < len(ps) else None
     for j, r in enumerate(store.replies(Path(g["path"]), number)):
+        r |= {"reasoning": readable(r["reasoning"]), "content": readable(r["content"])}
         tags = [html.Span(t, className="tag bad" if bad else "tag") for t, bad in (
             (f"{PHASE[r['phase']]}", False), (f"{r['tokens']:,} tokens", False),
             (f"restarted: {r['reset']}", False) if r["reset"] and r["reset"] != "new piece" else (None, False),
@@ -394,8 +433,8 @@ def piece_view(data: Data, nav: Nav, name: str, key: str, number: int):
         body.append(html.Div([
             html.Div(tags), html.Div(["calls: ", html.Code(" ".join(r["calls"]) or "none")]),
             html.Div(strip, className="boards") if strip else None,
-            html.Details([html.Summary(f"thinking ({len(r['reasoning']):,} characters)"), html.Pre(readable(r["reasoning"]))], open=j == 0) if r["reasoning"] else None,
-            html.Details([html.Summary("said"), html.Pre(readable(r["content"]))]) if r["content"].strip() else None],
+            html.Details([html.Summary(f"thinking ({len(r['reasoning']):,} characters)"), html.Pre(r["reasoning"])], open=j == 0) if r["reasoning"] else None,
+            html.Details([html.Summary("said"), html.Pre(r["content"])]) if r["content"].strip() else None],
             className="reply" + (" x" if r["phase"] else "")))
     draw.append(["before", p["board"]])
     pair = [html.Div([html.Canvas(id="before", width=140, height=280, className="big"), html.Div("as it spawned")])]
@@ -465,10 +504,11 @@ def build(data: Data) -> dash.Dash:
             return html.Div(["Nothing at this address: ", dcc.Link("all arms", href="/")], className="card")
         return overview(data, nav)
 
-    @app.callback(Output("url", "search", allow_duplicate=True), Input("stat", "value"), State("url", "search"), prevent_initial_call=True)
-    def tokens(value, search):
+    @app.callback(Output("url", "search", allow_duplicate=True), Input("stat", "value"), Input("show", "value"), State("url", "search"),
+                  prevent_initial_call=True)
+    def toggles(stat, show, search):
         nav = Nav(data, query(search))
-        return dash.no_update if nav.stat == value else nav.to(stat=value)[1:]
+        return dash.no_update if (nav.stat, nav.show) == (stat, show) else nav.to(stat=stat, show=show)[1:]
 
     @app.callback(Output("url", "search", allow_duplicate=True), Input({"kind": "to-arm", "i": ALL}, "clickData"),
                   Input({"kind": "to-game", "i": ALL}, "clickData"), Input({"kind": "to-piece", "i": ALL}, "clickData"),

@@ -69,6 +69,15 @@ def test_every_level_renders(game, tmp_path):
     ex.build(data)
 
 
-def test_long_unbroken_text_is_folded_and_prose_is_not():
-    assert ex.readable("a plan " * 200) == "a plan " * 200
-    assert ex.readable("ok " + "Q" * 5000) == "ok [5,000 unbroken characters folded]"
+def test_signed_thinking_blocks_are_not_shown_and_the_words_are():
+    assert ex.readable("plan.\n\n\n[anthropic-blocks:" + "Q" * 5000 + "]") == "plan."
+    assert ex.readable("board [4, 5] stays") == "board [4, 5] stays"
+
+
+def test_one_per_model_by_performance_and_by_cost_and_the_rail_does_not_move_the_scale():
+    arm = lambda model, tokens, burden: dict(arm=index.Arm("", [], model), mean=tokens, burden=burden)
+    data = type("D", (), {"arms": {"m low": arm("m", 1000, 14), "m mid": arm("m", 3000, 3), "m max": arm("m", 30000, 1),
+                                   "n": arm("n", 60000, 16)}})
+    pick = lambda names, show: ex.one_per_model(data, names, "mean", show)
+    assert pick(list(data.arms), "cost") == ["m mid", "n"] and pick(list(data.arms), "performance") == ["m max", "n"]
+    assert pick(["m low", "m mid"], "performance") == ["m mid"] and pick(["m low", "m max"], "cost") == ["m max"]

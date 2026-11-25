@@ -51,8 +51,8 @@ window.dash_clientside = window.dash_clientside || {};
         {type: "scatter", mode: "markers", x: pts.map(p => p[0]), y: pts.map(p => p[1]), text: pts.map(p => p[2] + " games here now"),
          hovertemplate: "%{text}<extra></extra>", marker: {symbol: "circle-open", color: "#0b0b0b", size: pts.map(p => 8 + 3 * Math.sqrt(p[2])), line: {width: 2}}}],
         layout: {height: 400, margin: {l: 44, r: 8, t: 8, b: 40}, showlegend: false, paper_bgcolor: "#fcfcfb", plot_bgcolor: "#fcfcfb",
-          xaxis: {title: {text: "live rows"}, range: [-.6, 20.6], dtick: 5, gridcolor: "#e4e3df", zeroline: false},
-          yaxis: {title: {text: "dead rows"}, range: [-.6, 20.6], dtick: 5, gridcolor: "#e4e3df", zeroline: false, scaleanchor: "x"}}};
+          xaxis: {title: {text: "live rows"}, range: [-.5, 20.5], constrain: "domain", constraintoward: "left", dtick: 5, gridcolor: "#e4e3df", zeroline: false},
+          yaxis: {title: {text: "dead rows"}, range: [-.5, 20.5], constrain: "domain", dtick: 5, gridcolor: "#e4e3df", zeroline: false, scaleanchor: "x"}}};
       return [fig, "piece " + k];
     },
     step: function (n, k, off, max) {         // play: advance the slider until the last piece
