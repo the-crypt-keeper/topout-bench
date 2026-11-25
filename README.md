@@ -1,6 +1,20 @@
-# topout-bench
+<p align="center">
+  <a href="https://topoutbench.com"><img src="www/img/logo.svg" width="128" alt="topout-bench"></a>
+</p>
 
-LLMs playing NES Tetris® through tool calls, and a way to look closely at how they play.
+<h1 align="center">topout-bench</h1>
+
+<p align="center">
+  <b>LLMs playing NES Tetris® through tool calls, and a way to look closely at how they play.</b>
+</p>
+
+<p align="center">
+  <a href="https://topoutbench.com"><b>topoutbench.com</b></a> ·
+  <a href="https://huggingface.co/datasets/mike-ravkine/topout-bench-results">the dataset</a> ·
+  <a href="docs/run.md">run it</a> ·
+  <a href="docs/read.md">read it</a> ·
+  <a href="docs/why.md">why it is like this</a>
+</p>
 
 Via [gym-tetris](https://github.com/Kautenja/gym-tetris), which provides the emulator and the game: this repository
 contains no ROM. Not affiliated with or endorsed by The Tetris Company.

@@ -10,7 +10,9 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://topoutbench.com/">
     <meta property="og:image" content="https://topoutbench.com/img/burden.png">
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23f8fafc'/%3E%3Cpath d='M2 11h3v3H2zM5.5 11h3v3h-3zM11 11h3v3h-3zM2 7.5h3v3H2zM11 7.5h3v3h-3z' fill='%232563eb'/%3E%3Cpath d='M5.5 7.5h3v3h-3z' fill='%23eb6834'/%3E%3Cpath d='M5.5 4h3v3h-3z' fill='%232563eb'/%3E%3C/svg%3E">
+    <link rel="icon" href="favicon.ico" sizes="16x16 32x32">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -71,6 +73,8 @@
             text-transform: uppercase;
             font-size: 0.95rem;
         }
+
+        .logo-mark img { display: block; flex: none; }
 
         h1 {
             font-family: 'JetBrains Mono', monospace;
@@ -411,7 +415,7 @@
         <header>
             <div class="hero">
                 <div>
-                    <div class="logo-mark"><span>🧱 topout-bench</span></div>
+                    <div class="logo-mark"><img src="img/logo.svg" alt="" width="44" height="44"><span>topout-bench</span></div>
                     <h1>Watch models think under gravity.</h1>
                     <p class="hero-lede">LLMs play NES Tetris® one button at a time, through tool calls. The game waits while they think, but every press costs time. topout-bench records every board, every thought and every press, and gives you a way to look at them: from all the models at once, down to one decision.</p>
                 </div>
