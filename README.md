@@ -5,9 +5,9 @@ LLMs playing NES Tetris® through tool calls, and a way to look closely at how t
 Via [gym-tetris](https://github.com/Kautenja/gym-tetris), which provides the emulator and the game: this repository
 contains no ROM. Not affiliated with or endorsed by The Tetris Company.
 
-![Burden against tokens per piece for 25 arms](docs/img/burden.png)
+![Burden against tokens per piece](docs/img/burden.png)
 
-*25 model and effort combinations, 16 games each. Up is better play, left is less thinking.*
+*Each dot is a model at one effort. Up is better play, left is less thinking. A snapshot: the data has moved on.*
 
 ## What it is
 
@@ -34,7 +34,7 @@ You need [uv](https://docs.astral.sh/uv/) and Python 3.13 or later. To look at o
 
     git clone https://github.com/the-crypt-keeper/topout-bench && cd topout-bench
     uv sync
-    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results     # about 650 MB
+    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results
     uv run topout-explore.py --dataset results                                                       # http://127.0.0.1:8050
 
 To play your own against a local engine, and see them beside ours:

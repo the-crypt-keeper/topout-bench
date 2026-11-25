@@ -5,12 +5,12 @@ docs/ (run, read, why). This file is for whoever works on the code: where the pr
 
 Public MIT repo. No ROM here or in the dataset (gym-tetris ships it); keep the no-affiliation line.
 
-## Where it stands (2026-11-25)
+## Where it stands
 
 - **Driver (`topout-play.py`, `topout/game.py`, `prompt.py`, `parallel.py`): mature.** Games pool with recorded ones
   only while the v1 text, tools, timing and journal format stay byte-identical (tests/test_prompt.py). Do not change
   any of them in passing.
-- **Dataset: public**, `mike-ravkine/topout-bench-results`, 400 games = 25 arms x 16. `viewer: false`, no Parquet.
+- **Dataset: public**, `mike-ravkine/topout-bench-results`. `viewer: false`, no Parquet.
 - **Analysis: converged** on `topout-explore` (interactive) and `topout-plot` (the same figures as images and tables), plus
   `topout-video`.
 
@@ -38,8 +38,7 @@ press: board before it, action, frames, `inputs`). Boards are shown *before* eac
   lines it cleared are known (from the summary).
 - A spawn board where the piece overlaps the stack is ordinary Tetris near top-out: kept, with the piece's cells counted as
   occupied (`ledger.spawn_board`), so a top-out's last board is 20 rows by construction (docs/why.md). No change in sealed cells is read into or out of one.
-- Completion tokens hide a cap: arms run with max_tokens 49,152, and strong-effort arms (MiMo, Haiku max, DS4 max)
-  press against it. They are measurements under that cap.
+- Completion tokens hide a cap: an arm that presses against its sampler's max_tokens is measured under that cap.
 - A shared seed fixes only the first 2-3 pieces; the deal then depends on frame count. Games are not paired.
 
 ## Reading the data
@@ -49,8 +48,11 @@ a measure or a view; docs/read.md says what each view means. Add to both when yo
 broken: never pool planning with execution or survivors with top-outs; no clock on an axis; filtering never changes what a
 number means; overlap of intervals says nothing; no model, label or effort fact in a script.
 
-When you change a view, regenerate its picture in docs/img (topout-plot; the Explorer shots are a browser's) and check the
-numbers docs/read.md and docs/why.md quote against the dataset.
+**No moving figures in README, CLAUDE.md or docs/ (operator).** Nothing that more data would make wrong: no counts of arms,
+games or pieces, no dataset size, no arm's burden, share or rank, no "the only" or "every other model". They are always
+stale, and anyone who wants them looks at the data. Say what happens and why, name an arm as an example if it helps, and
+keep to numbers that cannot move: the rules of the game, arithmetic, design constants, closed experiments. The pictures in
+docs/img are snapshots and say so; regenerate one when its view changes, not when the data does.
 
 ## The Explorer (`topout-explore.py`)
 

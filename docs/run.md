@@ -24,7 +24,7 @@ Required:
 | `--output` | the run's directory; each game goes in `OUTPUT/<i>/`. Keep run directory names unique: they become part of a published game's id |
 | `--sampler` | a JSON file of chat-completions fields sent with every request. The file's name is the arm's sampler name |
 | `--seed` | seeds the deal. It fixes only the first 2 or 3 pieces; after that the deal follows the frame count, so games of one seed differ |
-| `--lag-frames` | the least game time a button costs. 12 is 200 ms; all our games use it |
+| `--lag-frames` | the least game time a button costs. 12 is 200 ms |
 | `--context-length` | the engine's context window. It must be the true one: it tells a full context from a token cap |
 
 Useful:
@@ -75,8 +75,7 @@ an arm; `--arm NAME=PATH[,PATH...]` adds your own (a journal, a game directory, 
 side. Games still running are skipped and counted; restart to pick up new ones.
 
 Finished games are digested into a cache (`--cache`, by default `~/.cache/topout`). A digest is reused until its journal or
-the code that computes it changes, and deleting the cache loses nothing. 400 games take a few seconds the first time on a
-many-core machine.
+the code that computes it changes, and deleting the cache loses nothing. 
 
 The address holds the whole view, so a view is a link, and Back works. There is no login: `--host 0.0.0.0` shows it to
 everyone on your network. It works on a phone; a larger screen is better for the fingerprints and for comparing arms.

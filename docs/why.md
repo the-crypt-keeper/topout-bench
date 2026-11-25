@@ -1,8 +1,8 @@
 # Why it is like this
 
 Most of what is here replaced something that looked reasonable and was not. This page records what we tried, how it failed,
-and what the survivors are protecting. Dates are 2026. Numbers are the public dataset at 25 arms and 400 games unless it says
-otherwise.
+and what the survivors are protecting. It names arms as examples and quotes no figure that more data would
+change; the data has those.
 
 - [The game](#the-game) · [What to measure](#what-to-measure) · [What failed](#what-failed-and-how-we-could-tell) ·
   [Burden](#burden) · [The triangle and moves](#the-triangle-and-moves) · [Decisions](#decisions) ·
@@ -11,7 +11,7 @@ otherwise.
 
 ## The game
 
-**The board is text.** We tried screenshots first (October, an earlier harness, one model, Qwen3.8-27B): it named the falling
+**The board is text.** We tried screenshots first (an earlier harness, one model, Qwen3.8-27B): it named the falling
 piece correctly in 41% of decisions, against 100% from the text board. Vision tested vision.
 
 **One tool per button, nothing forced.** `tool_choice` is `auto`, and arguments-free verbs leave little to get wrong: forcing
@@ -58,16 +58,16 @@ line removes 10), while a topped-out game's is where it happened to stop. Two di
 **Lines per turn.** It is exactly `0.4 - filled / (10 x placed)`. For a survivor it is the debris left over, squeezed against
 a ceiling; for a top-out it is mostly game length dressed as a rate. Nothing in the number says which regime it is in.
 
-**Survival.** A coin flip against an arbitrary line. 8 of 16 spans 0.28 to 0.72. Twelve of our 25 arms score 0 of 16, and those
-twelve have burdens from 11.0 to 15.7, very different players. Haiku high and xhigh are both 15 of 16 while their burdens are
-2.39 and 1.23.
+**Survival.** A coin flip against an arbitrary line. Surviving half of sixteen games is compatible with a rate anywhere from 0.28 to
+0.72. And it saturates at both ends: many arms never reach the end, and play very differently from one another; two efforts of one model can
+reach it equally often and carry clearly different burdens.
 
 **Averages of per-placement changes.** "Sealed cells per placement" looks like a piece-level measure. Add up every change and
 you get the final count: it is the end of the game divided by its length. Only where play *lives*, or changes split *by
 situation*, escapes that.
 
-**Average dead rows over the pieces that were played.** Our first version of burden. It ranked Qwen3.8 Flash Next *low* (6.06,
-nothing reached the end) above *medium* (6.70, one did): a game that dies early has no time to look bad.
+**Average dead rows over the pieces that were played.** Our first version of burden. It ranked Qwen3.8 Flash Next *low* above *medium*, though medium plainly plays longer and
+better: a game that dies early has no time to look bad.
 
 **A heatmap of dead rows, all arms.** One row per arm, 21 columns. The top rows read; past the good arms it is mush, because
 every game starts at the origin and most arms end up everywhere. It shows how its own average was built and little else.
@@ -76,8 +76,8 @@ every game starts at the origin and most arms end up everywhere. It shows how it
 game sees, so a clock on an axis mixes what a model does with when its game happened to be there. Removing time is what made
 the triangle readable. It returns as motion, or on one game's own page.
 
-**Pooling a piece's replies.** Planning and execution are different populations; medians differ 7-fold (Haiku low) to 107-fold
-(Haiku max). Their average describes no reply. MiMo's pooled 15.7% truncation is really 39.0% of planning and 1.7% of
+**Pooling a piece's replies.** Planning and execution are different populations; their median lengths differ by anything from several-fold to a hundred-fold. Their average
+describes no reply. MiMo's pooled truncation rate looked moderate; it was a large share of planning replies and almost none of
 execution.
 
 **Counting faults.** A conduct report (capped, refused, stray arguments) read "everything was fine" on arm after arm. Faults
@@ -89,28 +89,22 @@ it waits. Splitting those by phase is what turned them from weak into some of th
 > Dead rows averaged over every turn of the game, a turn after the game ended counting as 20.
 
 It fixes the horizon, which repairs the early-death bias: dying is not a way to stop accumulating. Dead rows because they are
-what fills a board you cannot clear; live rows have a median of 2 to 4 in every arm, and dead ones are what separate
-them.
+what fills a board you cannot clear; live rows sit around 2 to 4 for most play, good and bad, and dead ones are what separate
+it.
 
-It has two arbitrary constants, so we checked whether they matter (rank agreement with the measure as used, Spearman, 25 arms):
+It has two arbitrary constants, the horizon (100) and the charge for a lost turn (20), so we checked whether they matter:
+stopping the clock much earlier, or charging half or half as much again, left the order of the arms almost unchanged (Spearman
+rank agreement with the measure as used). Worth repeating when the data has grown. What to know about it all the same:
 
-| instead | agreement |
-|---|---|
-| stop at piece 30 / 50 / 75 | 0.989 / 0.996 / 0.998 |
-| charge 10 / 15 / 30 for a lost turn | 0.987 / 0.998 / 0.998 |
-
-They barely move the order. What to know about it all the same:
-
-- **It changes character.** Where games top out it is mostly the charge for lost turns (60% to 85% for the twelve arms that never
-  reach the end); at the top it is all damage. Ranking arms by unplayed turns alone agrees at 0.986, so dead rows
-  mainly add resolution where survival is saturated.
-- **It is one number per game**, so 16 games is n = 16. But it is a graded random variable, not a coin flip, and carries far
+- **It changes character.** Where games top out it is mostly the charge for lost turns; at the top it is all damage. Ranking
+  arms by unplayed turns alone gives nearly the same order, so dead rows mainly add resolution where survival is saturated.
+- **It is one number per game**, so an arm's n is its games. But it is a graded random variable, not a coin flip, and carries far
   more than survival does. The intervals resample whole games.
 - **Overlapping intervals say nothing.** Intervals apart rule equality out. The comparison is the two sets of dots.
 
 **Tokens are a mean on that plot** though we describe replies by quantiles. The axis is a cost, and the mean times the pieces is
-the bill, tail included. The median hid Inkling's 40k budget completely: 35,686 against 36,455 at high, where the mean went
-from 43,780 to 38,673.
+the bill, tail included. The median hid Inkling's 40k budget completely, because the budget only
+acts on the tail; the mean showed it.
 
 **One point per model is a choice between two honest answers**, so the plot offers both. Best performance ignores cost. The cost
 frontier weighs burden and log tokens alike; there is no right weighting. Both axes scale over every loaded arm, never the
@@ -128,14 +122,13 @@ question. "Never pool survivors with top-outs" is a rule about game outcomes, an
 
 **Overlapping spawns are kept.** Near a top-out the next piece appears on top of the stack and the text, with one character a
 cell, prints `@` over `#`. The code used to notice its count was short and throw the board away. That is ordinary Tetris, not a
-data fault: every one of the 293 top-outs ends on such a board, so the last board of every lost game was missing. Now they are kept and the piece's cells count as
+data fault: a top-out ends on such a board, so the last board of every lost game was missing. Now they are kept and the piece's cells count as
 occupied. No change in sealed cells is read into or out of one, because the falling piece is in that board.
 
 Know what that does. The spawned piece is in the top row, so **every top-out's last board reads as exactly 20 rows, by
-construction**: its marker sits on the line because of the rule. Without the piece those stacks are 18 (29 games), 19 (138)
-or 20 (126) rows tall, so "a lost game ends at the top" is real and "exactly on the line" is not a finding. The rule also
-applies to 172 earlier overlapping boards, where the game went on and only some of the four cells were stack; working out
-which from the next board is the refinement, not built. It all changes an arm's burden by 0.018 at most.
+construction**: its marker sits on the line because of the rule. Without the piece those stacks are at or within a row or two of the top, so "a lost game ends at the top" is real and "exactly on the line" is not a finding. The rule also
+applies to earlier overlapping boards, where the game went on and only some of the four cells were stack; working out
+which from the next board is the refinement, not built. Its effect on burden was checked and is negligible.
 
 **Moves keep the cell level**, where the triangle cannot see whether damage comes as erosion or catastrophe, and they show it
 together with clearing, which is the only way to dig anything out. The numbers on each column are means, because debt is the sum of these changes and the rare
@@ -147,8 +140,8 @@ huge one is the point.
   halves facing each other shows it.
 - **Shape for tokens, one scale for calls.** One extreme arm flattened every other when tokens shared a scale.
 - **Buttons as two strips.** They were mirrored bars first; stacked strips show the mix at a glance.
-- **Replies per piece is not split.** A piece has replies; a phase does not. Planning is exactly 1 for 96% of pieces (72% for
-  MiMo, whose truncated plans are retried).
+- **Replies per piece is not split.** A piece has replies; a phase does not. Planning is almost always exactly 1, except where
+  truncated plans are retried.
 - **Truncated and nudged are part of the profile**, so they are columns. "Start alone" was too, and was dropped: the buttons
   strip already shows it.
 
@@ -162,7 +155,7 @@ the app cannot disagree with the same number in an image. The price is that writ
 *selection* the control. The rail changes **what is drawn, never what a number means**: burden of "only the pieces that sealed
 something" would not be burden, and we held off piece search partly for that reason.
 
-**A backend with a local copy and a cache.** 650 MB of journals cannot stream to a browser, and a static page could not read
+**A backend with a local copy and a cache.** The journals are far too big to stream to a browser, and a static page could not read
 your own runs. So there is a server, on your dataset. Numbers and boards are digested and cached; a model's words are read from
 its journal when you open that piece. Nothing derived is published: pieces recompute in seconds.
 
@@ -196,7 +189,7 @@ index repeats across runs.
 **No provenance in it.** A journal holds the served name, the settings and what happened. What hardware and engine produced it
 means a lot to a lab with hundreds of recipes and nothing to someone trying one model.
 
-**Every game has a sampler name, and an arm is 16 finished games.** Arms from before that were left out rather than patched in by
+**Every game has a sampler name, and only finished games are published.** Arms from before that were left out rather than patched in by
 hand, except one whose name could be established exactly.
 
 ## Rules we hold ourselves to

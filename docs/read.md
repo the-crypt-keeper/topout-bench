@@ -1,7 +1,7 @@
 # Reading it
 
-What each view shows, what to look for, and what it does not say. Examples are the public dataset in November 2026: 25
-arms, 400 games, 26,846 pieces. Every figure is in the Explorer and in `topout-plot`.
+What each view shows, what to look for, and what it does not say. The pictures are snapshots of the public dataset, and the examples name arms in it: look at the data for what it says now. Every figure is in the
+Explorer and in `topout-plot`.
 
 - [Words](#words) · [A tour](#a-ten-minute-tour) · [Burden against thinking](#burden-against-thinking) ·
   [Every game](#every-game) · [Decisions](#decisions) · [The triangle](#the-triangle) · [Moves](#moves) ·
@@ -11,7 +11,7 @@ arms, 400 games, 26,846 pieces. Every figure is in the Explorer and in `topout-p
 
 | word | meaning |
 |---|---|
-| **arm** | games played the same way: one model, one sampler, one effort. 16 games in ours |
+| **arm** | games played the same way: one model, one sampler, one effort |
 | **ladder** | a model's arms in effort order. One model can have two (Inkling with and without a token budget) |
 | **piece** | one tetromino, one conversation. A game is up to 100 |
 | **planning reply** | a piece's first reply (or a retry of it, or the first after a restart). This is where the thinking is |
@@ -29,11 +29,11 @@ arms, 400 games, 26,846 pieces. Every figure is in the Explorer and in `topout-p
     uv run topout-explore.py --dataset results
 
 1. **All arms.** Find Claude Haiku 5.5's ladder on the burden plot, and follow it up and right. Switch to **cost
-   frontier**, then **best performance**: Haiku's dot moves from high to max, and Inkling's from low to 40k max. Every other
-   model's stays put.
-2. Click **Claude Haiku 5.5 medium**. Press **Play**. Sixteen games start alike and fan out: some stay low, some fill up
+   frontier**, then **best performance**, and watch which models' dots move: those are the ones where playing best and playing
+   cheaply are different choices.
+2. Click **Claude Haiku 5.5 medium**. Press **Play**. The games start alike and fan out: some stay low, some fill up
    with orange. Watch the triangle climb with them.
-3. In **compare with**, add Claude Haiku 5.5 max. Same scrubber, same colours. One keeps to the bottom edge.
+3. In **compare with**, add Claude Haiku 5.5 max. Same scrubber, same colours. Compare where each one lives.
 4. Go back, click one of medium's worse games, and find the piece where the orange bars step up. Click it.
 5. Read what the model was thinking, and look at the board it was shown before each button.
 
@@ -45,18 +45,18 @@ One dot per arm. **Up is better** (the axis runs from 0 at the top), **left is c
 for the piece's whole conversation: the *mean* counts the long tail (what it costs), the *median* does not. Bars are the 95%
 interval of the mean over the arm's games.
 
-- **full ladder** joins each ladder's arms in effort order. A line that doubles back (Qwen3.8 27B) means an effort setting
+- **full ladder** joins each ladder's arms in effort order. A line that doubles back means an effort setting
   that costs less *and* plays worse than the one below it.
 - **best performance** shows each model's lowest burden.
 - **cost frontier** shows each model's arm nearest the top left corner: no burden, at the fewest tokens of any arm. Both
-  axes are scaled 0 to 1 over every arm loaded, tokens in log, and weigh alike. It is a compromise, not the set of arms
-  nothing beats: for Inkling it picks *low*, which plays badly and cheaply.
+  axes are scaled 0 to 1 over every arm loaded, tokens in log, and weigh alike. It is a compromise, not the set of arms nothing beats, and it can pick an arm that plays badly and very
+  cheaply.
 
 The rail chooses which arms are drawn. It never moves the axes or the corner.
 
 **Look for** slope: how much better play each doubling of tokens buys. **Remember** that burden changes character down the
-axis. At the top it is damage on boards that were played; at the bottom (0 of 16 reaching the end) 60% to 85% of it is
-turns the games never played.
+axis. At the top it is damage on boards that were played; at the bottom, where games top out early, most of it is turns the games
+never played.
 
 ## Every game
 
@@ -65,9 +65,9 @@ turns the games never played.
 Each mark is one game's burden: **squares** reached the end, **circles** topped out, the dash is the arm's mean. This is the
 comparison itself; the interval above is a summary of it.
 
-**Look for** shape, not only position. Haiku medium is spread from 3 to 13: the same policy sometimes holds together and
-sometimes does not. MiMo has two bad games (11 and 13) and fourteen under 7, so its mean, 4.6, sits above eleven of its sixteen. Reaching the end is
-not the same as playing well: some top-outs carry less burden than some survivors.
+**Look for** shape, not only position. A wide spread (Haiku medium) is one policy that sometimes holds together and
+sometimes does not. A tight group with a few stray games (MiMo) has a mean that describes few of its games. Reaching the end is
+not the same as playing well: a game that tops out late can carry less burden than one that survives.
 
 ## Decisions
 
@@ -87,15 +87,12 @@ added together; each is a share of its own phase.
 What to look for, with examples above:
 
 - **Where effort goes.** Along a ladder the blue hump slides right. Whether the orange one follows says if the model
-  re-plans while steering (DeepSeek, Inkling, MiMo: one execution reply in ten runs past 1,000 to 6,000 tokens) or mostly executes (Haiku up to xhigh, Flash
-  Next: under 1,000).
+  re-plans while steering (DeepSeek, Inkling, MiMo: long orange tails) or mostly executes (Haiku below max, Flash Next).
 - **Two ways to start.** Hy4, Inkling and Haiku max answer the paused board with a lone `start` (a planning strip that is
   nearly all green) and steer afterwards. Gemma sends the whole plan in one reply, then mostly `drop`s.
 - **One button at a time or bundled.** A single tall bar at 1 call, or a spread to 6+.
-- **Waiting.** 29% to 35% of Inkling's execution presses are `wait`, at every effort. The next highest arm is 20%, and most
-  are under 13%.
-- **The cap.** Our games cap a reply at 49,152 tokens. A black bar there is the cap shaping the arm: 39% of MiMo's planning
-  replies. Compare Inkling max with 40k max: the tail moves in from the cap and little else changes.
+- **Waiting.** A wide `wait` segment in the execution strip: Inkling has one at every effort.
+- **The cap.** A black bar at the right is the sampler's token limit shaping the arm; MiMo plans against it constantly. Compare Inkling max with 40k max: the tail moves in from the cap and the rest of the fingerprint stays.
 
 ## The triangle
 
@@ -127,8 +124,7 @@ placements, log, one range for all panels. The numbers are each column's mean ch
 
 - **The 0 column's upper tail** is the damage. Is it erosion (many +1s) or catastrophe (a few +15s)?
 - **Below zero** is digging out, which only a clear can do.
-- **Columns 2, 3 and 4** show a player saving its clears. Haiku max clears less often than high (172 singles against 379)
-  but makes 41 four line clears to high's 3.
+- **Columns 2, 3 and 4** show a player saving its clears. Compare Haiku high with max: fewer clears, more of them fours.
 
 ## One game, one piece
 
@@ -147,7 +143,7 @@ press, and the model's thinking. Haiku's thinking is followed in its journals by
 Up to four arms side by side share one scrubber, one triangle range, one moves scale and one set of fingerprint scales.
 
 - Intervals that do not overlap rule out equal means. **Intervals that overlap say nothing.** Look at the two sets of games.
-- 16 games is 16 samples of burden, whatever the number of pieces.
+- An arm has as many samples of burden as it has games, whatever the number of pieces.
 - Games are not paired: the deal depends on the play.
 - Effort names are not comparable between models. Tokens are.
 
@@ -157,7 +153,7 @@ Up to four arms side by side share one scrubber, one triangle range, one moves s
   two arms do *from the same board* is the open problem ([why](why.md#open)).
 - **An arm is a served model.** Quantisation, engine, chat template, parser and token cap are all in it. A `think` arm on
   one engine is not the model's final word.
-- **One seed, one lag, one prompt.** All our games share them.
+- **One prompt, and whatever seed and lag a run used.** The run records say which.
 - **The last piece has no outcome** beyond the lines it cleared: the journal holds boards before presses, so there is no
   board after it.
 - **"Sealed" is generous to the player.** It assumes a 1x1 piece could squeeze anywhere, so a pocket no tetromino fits still
