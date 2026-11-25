@@ -28,66 +28,15 @@ import math
 from collections import Counter
 from pathlib import Path
 
-from topout import index, journals
-from topout.calls import is_reply
-from topout.prompt import BUTTONS
+from topout import index
+from topout.decisions import BINS, CALLS, HIGH, LOW, REPLIES, VERBS, phases, rates, share
 
 INK, MUTED, GRID, SURFACE, PLAN, EXEC = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb", "#2a78d6", "#eb6834"
-VERBS = list(BUTTONS)
 VERB_COLORS = ["#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]    # none of the phase colours
 PIECE = "#8a8984"                      # replies per piece: both phases together, so neither's colour
-BINS, LOW, HIGH = 24, 4, 16            # token bins, log2 range
-CALLS, REPLIES = 6, 16                 # the last bar of each is "or more"
-
-
-def token_bin(t: int) -> int:
-    return min(BINS - 1, max(0, int((math.log2(max(t, 1)) - LOW) / (HIGH - LOW) * BINS)))
-
-
-def phases(paths: list[Path]) -> tuple[list[dict], Counter, set[int]]:
-    """Counts for planning (0) and execution (1) over every reply of the arm, replies per piece (both phases), and the
-    max_tokens its run records hold."""
-    out = [dict(n=0, tokens=[], bins=Counter(), cut=Counter(), calls=Counter(), verbs=Counter(), truncated=0) for _ in range(2)]
-    caps, per_piece = set(), Counter()
-    for path in paths:
-        cap = (journals.run_record(path).get("sampler") or {}).get("max_tokens")
-        caps |= {cap} if cap else set()
-        pieces: Counter = Counter()
-        for r in journals.records(path):
-            if not is_reply(r):
-                continue
-            ph = 0 if r["conv_turn"] == 0 else 1
-            d, t = out[ph], int((r["usage"] or {}).get("completion_tokens") or 0)
-            d["n"] += 1
-            d["tokens"].append(t)
-            d["bins"][token_bin(t)] += 1
-            pieces[r["pieces"]] += 1
-            if r["kind"] == "capped":
-                d["truncated"] += 1
-                d["cut"][token_bin(t)] += 1
-                continue
-            calls = r.get("tool_calls") or []
-            d["calls"][min(len(calls), CALLS)] += 1
-            for c in calls:
-                d["verbs"][(c.get("function") or {}).get("name")] += 1
-        for n in pieces.values():
-            per_piece[min(n, REPLIES)] += 1
-    return out, per_piece, caps
-
-
-def share(counter: Counter, keys) -> list[float]:
-    total = sum(counter.values()) or 1
-    return [counter[k] / total for k in keys]
-
-
 COLUMNS = [("tokens", range(BINS), "completion tokens"), ("calls", range(CALLS + 1), "calls per reply"),
            ("verbs", VERBS, "buttons (planning over execution)"), ("per_piece", range(1, REPLIES + 1), "replies per piece"),
            ("truncated", (), "truncated"), ("nudged", (), "nudged")]
-
-
-def rates(d: dict) -> dict[str, float]:
-    """Shares of the phase's replies: cut off by max_tokens or the context, and nudged (no tool call)."""
-    return {"truncated": d["truncated"] / (d["n"] or 1), "nudged": d["calls"][0] / (d["n"] or 1)}
 
 
 def plot(arms: dict[str, list[dict]], per_piece: dict[str, Counter], models: dict[str, str], caps: set[int], out: Path) -> None:

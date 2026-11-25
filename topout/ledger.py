@@ -140,22 +140,33 @@ def placements(rows: list[dict]) -> list[dict]:
     return out
 
 
+def spawn_board(tick: dict) -> tuple[str, bool]:
+    """The stack on a piece's first tick, and whether the piece overlaps it. An overlapping spawn (a '#' count short of
+    4 (p - 1) - 10 L: the piece is drawn over settled cells, or cells were lost above the top) is kept, with the piece's
+    cells counted as occupied; on any other board the falling piece is in the air and is not stack."""
+    board = tick["board"]
+    if board.count("#") == 4 * (tick["pieces"] - 1) - 10 * tick["lines"]:
+        return board.replace("@", "."), False
+    return board.replace("@", "#"), True
+
+
 def dead_rows(path: Path) -> list[int]:
-    """Dead rows on the board each piece spawned into, in piece order. A board where the piece overlaps the stack (a '#'
-    count short of 4 (p - 1) - 10 L: the piece is drawn over settled cells, or cells were lost above the top) is kept,
-    with the piece's cells counted as occupied."""
+    """Dead rows on the board each piece spawned into, in piece order (spawn_board)."""
     out, seen = [], set()
     for t in journals.records(path):
-        if t.get("kind") != "tick" or t["pieces"] in seen:
-            continue
-        seen.add(t["pieces"])
-        board = t["board"]
-        if board.count("#") != 4 * (t["pieces"] - 1) - 10 * t["lines"]:
-            board = board.replace("@", "#")
-        out.append(regions(board)["dead_rows"])
+        if t.get("kind") == "tick" and t["pieces"] not in seen:
+            seen.add(t["pieces"])
+            out.append(regions(spawn_board(t)[0])["dead_rows"])
     return out
 
 
 def burden(dead: list[int], turns: int) -> float:
     """Dead rows averaged over `turns` turns; every turn after the game ended counts as all ROWS of them."""
     return (sum(dead) + ROWS * (turns - len(dead))) / turns
+
+
+def interval(xs: list[float], n: int = 10000) -> tuple[float, float]:
+    """95% interval of the mean, resampling games (fixed seed)."""
+    import numpy as np
+    means = np.random.default_rng(1).choice(xs, (n, len(xs))).mean(axis=1)
+    return tuple(float(v) for v in np.percentile(means, (2.5, 97.5)))

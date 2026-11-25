@@ -43,12 +43,6 @@ def game(path: Path) -> dict | None:
             "survived": summary["termination"] == "max_pieces", "tokens": list(tokens.values())}
 
 
-def interval(xs: list[float], n: int = 10000) -> tuple[float, float]:
-    """95% interval of the mean, resampling games (fixed seed)."""
-    means = np.random.default_rng(1).choice(xs, (n, len(xs))).mean(axis=1)
-    return tuple(float(v) for v in np.percentile(means, (2.5, 97.5)))
-
-
 def plot(arms: dict[str, dict], out: Path, stat: str) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -120,7 +114,7 @@ def main() -> None:
             continue
         turns |= {g["turns"] for g in games}
         xs = [g["burden"] for g in games]
-        arms[name] = {"games": games, "mean": float(np.mean(xs)), "ci": interval(xs), "arm": arm,
+        arms[name] = {"games": games, "mean": float(np.mean(xs)), "ci": ledger.interval(xs), "arm": arm,
                       "tokens": float(getattr(np, a.tokens)([t for g in games for t in g["tokens"]]))}
     if not arms:
         raise SystemExit("topout-burden: no finished game in any arm")
