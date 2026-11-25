@@ -81,3 +81,9 @@ def test_one_per_model_by_performance_and_by_cost_and_the_rail_does_not_move_the
     pick = lambda names, show: ex.one_per_model(data, names, "mean", show)
     assert pick(list(data.arms), "cost") == ["m mid", "n"] and pick(list(data.arms), "performance") == ["m max", "n"]
     assert pick(["m low", "m mid"], "performance") == ["m mid"] and pick(["m low", "m max"], "cost") == ["m max"]
+
+
+def test_labels_of_neighbouring_points_take_different_sides():
+    assert ex.place_labels([(100, 100)], ["one"], [(90, 110)]) == ["bottom right"]
+    a, b = ex.place_labels([(100, 100), (160, 98)], ["a long label here", "another"], [(90, 110), (88, 108)])
+    assert a != b

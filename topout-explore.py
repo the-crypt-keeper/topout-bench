@@ -124,6 +124,28 @@ def one_per_model(data: Data, names: list[str], stat: str, show: str) -> list[st
     return list(best.values())
 
 
+def place_labels(points: list[tuple[float, float]], texts: list[str], bars: list[tuple[float, float]]) -> list[str]:
+    """A side for each label (plotly textposition) that keeps it off the other labels, points and error bars. Coordinates
+    are pixels, y down, for a plot of about the usual width; a much narrower window can still collide. Greedy, in order."""
+    sides = {"bottom right": (0, 1), "top right": (0, -1), "middle right": (0, 0), "bottom left": (-1, 1), "top left": (-1, -1),
+             "middle left": (-1, 0)}
+    fixed = [(x - 6, y - 6, x + 6, y + 6) for x, y in points] + [(x - 3, a, x + 3, b) for (x, _), (a, b) in zip(points, bars)]
+    placed: list[tuple] = []
+    out = []
+    area = lambda a, b: max(0, min(a[2], b[2]) - max(a[0], b[0])) * max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    for (x, y), text in zip(points, texts):
+        w = 5.9 * len(re.sub("<[^>]*>", "", text))
+        def box(side):
+            left, down = sides[side]
+            x0 = x - 8 - w if left else x + 8
+            y0 = {1: y + 4, -1: y - 17, 0: y - 6}[down]
+            return (x0, y0, x0 + w, y0 + 13)
+        best = min(sides, key=lambda q: (round(sum(3 * area(box(q), b) for b in placed) + sum(area(box(q), b) for b in fixed)), list(sides).index(q)))
+        placed.append(box(best))
+        out.append(best)
+    return out
+
+
 def burden_figure(data: Data, names: list[str], stat: str, show: str) -> go.Figure:
     fig = go.Figure()
     if show != "ladders":
@@ -142,10 +164,15 @@ def burden_figure(data: Data, names: list[str], stat: str, show: str) -> go.Figu
             text |= dict(zip(ns, rest))
             text[ns[-1]] = f"<b>{head}</b> {rest[-1]}"
     A = [data.arms[n] for n in names]
+    every = data.arms.values()                       # one range for every choice, so nothing moves when arms or the view change
+    lo, hi = (np.log10(f(x[stat] for x in every)) for f in (min, max))
+    xr, yr = [lo - .06, hi + .22], [max(x["ci"][1] for x in every) + 1, -.6]
+    px = lambda t, b: (1100 * (np.log10(t) - xr[0]) / (xr[1] - xr[0]), 450 * (b - yr[1]) / (yr[0] - yr[1]))
     few = len(names) <= 30
     fig.add_scatter(
         x=[a[stat] for a in A], y=[a["burden"] for a in A], mode="markers+text" if few else "markers", text=[text[n] for n in names],
-        textposition="bottom right", textfont=dict(size=10, color=INK), customdata=names,
+        textposition=place_labels([px(a[stat], a["burden"]) for a in A], [text[n] for n in names],
+                                  [(px(1, a["ci"][0])[1], px(1, a["ci"][1])[1]) for a in A]), textfont=dict(size=10, color=INK), customdata=names,
         marker=dict(size=11, color=PLAN, line=dict(color=SURFACE, width=2)),
         error_y=dict(type="data", symmetric=False, array=[a["ci"][1] - a["burden"] for a in A],
                      arrayminus=[a["burden"] - a["ci"][0] for a in A], color=PLAN, thickness=1.3, width=4),
@@ -154,10 +181,8 @@ def burden_figure(data: Data, names: list[str], stat: str, show: str) -> go.Figu
                    for n, a in zip(names, A)], hoverinfo="text")
     fig.update_xaxes(type="log", title=f"completion tokens per piece, {stat} (log)", tickvals=[t * 10 ** e for e in range(2, 6) for t in (1, 2, 5)],
                      ticktext=[f"{t * 10 ** e / 1000:g}k" for e in range(2, 6) for t in (1, 2, 5)])
-    every = data.arms.values()                       # one range for every choice, so nothing moves when arms or the view change
-    lo, hi = (np.log10(f(x[stat] for x in every)) for f in (min, max))
-    fig.update_xaxes(range=[lo - .06, hi + .22])
-    fig.update_yaxes(title="burden (up is better)", range=[max(x["ci"][1] for x in every) + 1, -.6])
+    fig.update_xaxes(range=xr)
+    fig.update_yaxes(title="burden (up is better)", range=yr)
     return layout(fig, 520)
 
 
@@ -466,10 +491,10 @@ def build(data: Data) -> dash.Dash:
             html.Button("All", id="all"), html.Button("None", id="none")]
     for i, m in enumerate(ids):
         head, opts = shared(groups[m])
-        if not head:
-            head, opts = groups[m][0], ["shown"] if len(groups[m]) == 1 else opts
-        rail += [html.Div(head, className="model"),
-                 dcc.Checklist([{"label": f" {o}", "value": n} for o, n in zip(opts, groups[m])], groups[m], id={"kind": "pick", "i": i}, inline=True)]
+        if len(groups[m]) > 1:
+            rail.append(html.Div(head, className="model"))
+        rail.append(dcc.Checklist([{"label": f" {o}", "value": n} for o, n in zip(opts, groups[m])], groups[m],
+                                  id={"kind": "pick", "i": i}, inline=True, className="model-one" if len(groups[m]) == 1 else ""))
     if data.skipped:
         rail.append(html.P(f"{data.skipped} games still running, skipped"))
     app.layout = html.Div([dcc.Location(id="url"), html.Div(rail, id="rail"), html.Div(id="main")], id="app")
