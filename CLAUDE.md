@@ -62,6 +62,12 @@ what a number means. The address is the only state; `dcc.Location` needs `refres
 the page. Phones get their own figures (`narrow`), with a line steering to a larger screen where that costs something.
 The scrubber swaps cells and rings into the Python-built triangle. Board colours and the flood in explore_assets/boards.js mirror topout/ledger.py. Piece search: held off.
 
+## The site (`www/`)
+
+Static, self-contained, served as the root of topoutbench.com (`python3 -m http.server -d www` to look). It follows
+reasonscape's `www/index.html` style. Same rule as the docs: no moving figures; `img/` are snapshots. `replay.js` holds two
+recorded games' boards.
+
 ## Working here
 
     uv sync; uv run pytest          # minutes, not seconds: tests/test_play.py plays emulated games against a fake engine

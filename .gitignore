@@ -5,5 +5,6 @@ __pycache__/
 *.mp4
 *.png
 !docs/img/*.png
+!www/img/*.png
 *.csv
 games/

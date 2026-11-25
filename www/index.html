@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>topout-bench: how LLMs play, one piece at a time</title>
+    <meta name="description" content="LLMs playing NES Tetris through tool calls, and a way to look closely at how they play: every arm, game, piece and decision.">
+    <meta property="og:title" content="topout-bench: how LLMs play, one piece at a time">
+    <meta property="og:description" content="LLMs playing NES Tetris through tool calls, and a way to look closely at how they play.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://topoutbench.com/">
+    <meta property="og:image" content="https://topoutbench.com/img/burden.png">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23f8fafc'/%3E%3Cpath d='M2 11h3v3H2zM5.5 11h3v3h-3zM11 11h3v3h-3zM2 7.5h3v3H2zM11 7.5h3v3h-3z' fill='%232563eb'/%3E%3Cpath d='M5.5 7.5h3v3h-3z' fill='%23eb6834'/%3E%3Cpath d='M5.5 4h3v3h-3z' fill='%232563eb'/%3E%3C/svg%3E">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --panel: #ffffff;
+            --muted: #475569;
+            --text: #0f172a;
+            --accent: #3b82f6;
+            --accent-strong: #2563eb;
+            --warm: #f59e0b;
+            --border: #e2e8f0;
+            --border-strong: #cbd5e1;
+            --card: #ffffff;
+            --sealed: #eb6834;
+            --shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--border);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            overflow-x: hidden;
+        }
+
+        a { color: inherit; text-decoration: none; }
+
+        .container {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 0 22px;
+            position: relative;
+            z-index: 1;
+        }
+
+        header {
+            padding: 80px 0 40px;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(380px, 1.1fr) minmax(320px, 0.9fr);
+            gap: 40px;
+            align-items: center;
+        }
+
+        .logo-mark {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: var(--accent-strong);
+            text-transform: uppercase;
+            font-size: 0.95rem;
+        }
+
+        h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: clamp(2.4rem, 4vw, 3.4rem);
+            letter-spacing: -0.02em;
+            margin: 14px 0 16px;
+            line-height: 1.15;
+        }
+
+        .hero-lede {
+            color: var(--muted);
+            font-size: 1.05rem;
+            max-width: 620px;
+        }
+
+        .cta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin: 28px 0 12px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            border: 1px solid var(--border-strong);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        .btn.primary {
+            background: linear-gradient(120deg, var(--accent), var(--accent-strong));
+            color: #ffffff;
+            border-color: transparent;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+        }
+
+        .btn.secondary {
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .btn.primary:hover {
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45);
+        }
+
+        .hero-panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px;
+            margin-bottom: 12px;
+        }
+
+        .stat-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .stat-label {
+            color: var(--muted);
+            font-size: 0.82rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            display: block;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-top: 6px;
+            color: var(--text);
+        }
+
+        .micro-copy {
+            color: var(--muted);
+            font-size: 0.95rem;
+            margin-top: 12px;
+        }
+
+        .problem-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 12px;
+            margin-top: 22px;
+        }
+
+        .pill {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            color: var(--muted);
+            font-weight: 500;
+        }
+
+        .pill i { color: var(--accent); }
+
+        section {
+            padding: 64px 0;
+            border-top: 1px solid var(--border);
+        }
+
+        .section-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.8rem;
+            letter-spacing: -0.02em;
+            margin-bottom: 12px;
+        }
+
+        .section-sub {
+            color: var(--muted);
+            max-width: 720px;
+            margin-bottom: 28px;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+            display: flex;
+            flex-direction: column;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .card h3 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .card > p {
+            flex-grow: 1;
+        }
+
+        .card-img {
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+            margin-top: auto;
+            padding-top: 12px;
+            border: 1px solid var(--border);
+            opacity: 0.9;
+            transition: opacity 0.2s ease;
+        }
+
+        .card-img:hover {
+            opacity: 1;
+        }
+
+        .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: var(--accent-strong);
+            margin-bottom: 6px;
+        }
+
+        ul.bullet {
+            margin-top: 8px;
+            padding-left: 18px;
+            color: var(--muted);
+        }
+
+        .split {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            align-items: start;
+        }
+
+        .tools-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 14px;
+            margin-top: 10px;
+        }
+
+        .tool-link {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--text);
+            font-weight: 600;
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .tool-link:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.12);
+        }
+
+        .tool-link-with-img {
+            flex-direction: column;
+            align-items: stretch;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .tool-link-img {
+            width: 100%;
+            height: auto;
+            display: block;
+            opacity: 0.9;
+            transition: opacity 0.2s ease;
+        }
+
+        .tool-link-with-img:hover .tool-link-img {
+            opacity: 1;
+        }
+
+        .tool-link-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px;
+        }
+
+        .pipeline {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .stage {
+            background: var(--panel);
+            border: 1px dashed var(--border-strong);
+            border-radius: 12px;
+            padding: 14px;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .stage:hover {
+            background: #eff6ff;
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+        }
+
+        .code-block {
+            background: #f1f5f9;
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-strong);
+            font-size: 0.9rem;
+            line-height: 1.8;
+        }
+
+        footer {
+            padding: 48px 0 60px;
+            color: var(--muted);
+            font-size: 0.95rem;
+            border-top: 1px solid var(--border);
+            margin-top: 40px;
+        }
+
+        @media (max-width: 720px) {
+            header { padding: 64px 0 32px; }
+            .cta-row { flex-direction: column; }
+        }
+
+        @media (max-width: 900px) {
+            .hero { grid-template-columns: 1fr; }
+        }
+
+        .replay { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .replay .stat-card { text-align: center; }
+        .replay canvas { display: block; width: 100%; max-width: 170px; margin: 10px auto 6px; background: #ffffff; border: 1px solid var(--border-strong); border-radius: 6px; }
+        .replay .state { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: var(--muted); min-height: 1.6em; }
+        .key { display: inline-block; width: 11px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+        .card i.lead { color: var(--accent); margin-right: 8px; }
+        .wide { grid-column: 1 / -1; }
+        .stage b.step { display: block; font-family: 'JetBrains Mono', monospace; }
+        .code-block { overflow-x: auto; white-space: pre; font-variant-ligatures: none; font-size: 0.82rem; }
+        section a.inline, .section-sub a, .micro-copy a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+        a:focus-visible, .btn:focus-visible, button:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+        .replay-ctl { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .replay-ctl button { font: inherit; font-size: 0.85rem; padding: 4px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel); cursor: pointer; }
+        @media (max-width: 900px) { .hero > * { min-width: 0; } }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="hero">
+                <div>
+                    <div class="logo-mark"><span>🧱 topout-bench</span></div>
+                    <h1>Watch models think under gravity.</h1>
+                    <p class="hero-lede">LLMs play NES Tetris® one button at a time, through tool calls. The game waits while they think, but every press costs time. topout-bench records every board, every thought and every press, and gives you a way to look at them: from all the models at once, down to one decision.</p>
+                </div>
+                <div class="hero-panel">
+                    <div class="eyebrow">Same model, two efforts</div>
+                    <div class="replay">
+                        <div class="stat-card"><span class="stat-label" id="n0">low effort</span><canvas id="c0" width="200" height="400" role="img" aria-label="Replay of a recorded game at low effort"></canvas><div class="state" id="s0"></div></div>
+                        <div class="stat-card"><span class="stat-label" id="n1">max effort</span><canvas id="c1" width="200" height="400" role="img" aria-label="Replay of a recorded game at max effort"></canvas><div class="state" id="s1"></div></div>
+                    </div>
+                    <div class="replay-ctl"><span class="micro-copy" style="margin: 0;">Two recorded Claude Haiku 5.5 games. <span class="key" style="background: var(--sealed)"></span>holes nothing can reach.</span><button id="play">Pause</button></div>
+                </div>
+            </div>
+            <div class="cta-row" style="justify-content: center; margin-top: 28px;">
+                <a class="btn primary" href="#start"><i class="fas fa-magnifying-glass"></i>Explore the games</a>
+                <a class="btn secondary" href="https://huggingface.co/datasets/mike-ravkine/topout-bench-results"><i class="fas fa-database"></i>Get the data</a>
+                <a class="btn secondary" href="https://github.com/the-crypt-keeper/topout-bench"><i class="fab fa-github"></i>Clone the source code</a>
+                <a class="btn secondary" href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md"><i class="fas fa-book"></i>Read the documentation</a>
+            </div>
+        </header>
+
+        <section>
+            <h2 class="section-title">How a model plays</h2>
+            <p class="section-sub">One hundred pieces, or until the stack tops out. Any OpenAI-compatible endpoint that parses tool calls can play.</p>
+            <div class="card-grid">
+                <div class="card"><div class="eyebrow">What it sees</div><h3><i class="fas fa-align-left lead"></i>A board of text</h3><p class="micro-copy">Settled blocks, the falling piece, the next one, lines and score. Reading pixels is a different test.</p></div>
+                <div class="card"><div class="eyebrow">What it does</div><h3><i class="fas fa-gamepad lead"></i>One tool per button</h3><p class="micro-copy">start, left, right, rotate, drop, wait. Nothing is forced, and no argument to get wrong.</p></div>
+                <div class="card"><div class="eyebrow">What it costs</div><h3><i class="fas fa-hourglass-half lead"></i>Thinking is free, moving is not</h3><p class="micro-copy">The emulator waits for the model, so a slow GPU plays the same game. Every press lets the piece fall.</p></div>
+                <div class="card"><div class="eyebrow">What it remembers</div><h3><i class="fas fa-comment-dots lead"></i>One piece, one conversation</h3><p class="micro-copy">A plan stays in context while it is carried out. The next piece starts fresh, on whatever board is left.</p></div>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="section-title">What we look at</h2>
+            <p class="section-sub">A final score says almost nothing about how a game was played. These do. The pictures are snapshots: the data has moved on.</p>
+            <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));">
+                <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md#burden-against-thinking" class="card wide"><div class="eyebrow">Burden against thinking</div><h3>How well, and at what price</h3><p class="micro-copy">Burden is the damage a player carries: rows it can no longer clear, averaged over the whole game, with every turn after a top-out counted as a full board. Up is better, left is less thinking.</p><img src="img/burden.png" alt="Each model's effort ladder: burden against tokens per piece" class="card-img"></a>
+                <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md#decisions" class="card wide"><div class="eyebrow">Decisions</div><h3>A fingerprint of how it decides</h3><p class="micro-copy">Planning, in blue, against execution, in orange: how long it thinks, how many calls it makes, which buttons it likes, and where it gets cut off.</p><img src="img/decisions.png" alt="Planning and execution fingerprints for five arms" class="card-img" loading="lazy"></a>
+                <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md#the-triangle" class="card"><div class="eyebrow">The triangle</div><h3>Where play lives</h3><p class="micro-copy">Every board as live rows against dead ones. A dense corner is a good player; the way it smears is a style.</p><img src="img/triangle.png" alt="Triangles for two efforts of one model" class="card-img" loading="lazy"></a>
+                <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md#moves" class="card"><div class="eyebrow">Moves</div><h3>What each piece did</h3><p class="micro-copy">Lines cleared against holes made. Erosion or catastrophe, singles or saving up for four.</p><img src="img/moves.png" alt="Moves for two efforts of one model" class="card-img" loading="lazy"></a>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="section-title">The Explorer</h2>
+            <p class="section-sub">Every view is a click from the last, and every view is a link. It runs on your machine, on a copy of our games, yours, or both side by side.</p>
+            <div class="pipeline">
+                <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md#burden-against-thinking" class="stage"><div class="eyebrow">All arms</div><b class="step">Pick some</b><p class="micro-copy">Every model and effort, as a ladder or at its best.</p></a>
+                <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md#comparing-arms" class="stage"><div class="eyebrow">One arm, or several</div><b class="step">Scrub them</b><p class="micro-copy">All its games together, piece by piece, next to another's.</p></a>
+                <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md#one-game-one-piece" class="stage"><div class="eyebrow">One game</div><b class="step">Find the turn</b><p class="micro-copy">Tokens, damage and every board it faced.</p></a>
+                <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md#one-game-one-piece" class="stage"><div class="eyebrow">One piece</div><b class="step">Read its mind</b><p class="micro-copy">The thinking, the calls, and the board before each press.</p></a>
+            </div>
+            <div class="card-grid" style="margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));">
+                <div class="card"><div class="eyebrow">Arms side by side</div><img src="img/compare.png" alt="The Explorer comparing two arms" class="card-img" loading="lazy"></div>
+                <div class="card"><div class="eyebrow">One piece</div><img src="img/piece.png" alt="The Explorer showing one piece's boards and the model's thinking" class="card-img" loading="lazy"></div>
+            </div>
+        </section>
+
+        <section id="start">
+            <div class="split">
+                <div>
+                    <h2 class="section-title">Look without running inference</h2>
+                    <p class="section-sub">The games are a public dataset: one raw journal each, everything the model saw, thought and pressed. Nothing is summarised away, so you can ask questions we have not.</p>
+                    <div class="tools-row">
+                        <a class="tool-link" href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/run.md"><span><i class="fas fa-terminal"></i> Running it</span><i class="fas fa-arrow-right"></i></a>
+                        <a class="tool-link" href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md"><span><i class="fas fa-chart-line"></i> Reading it</span><i class="fas fa-arrow-right"></i></a>
+                        <a class="tool-link" href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/why.md"><span><i class="fas fa-circle-question"></i> Why it is like this</span><i class="fas fa-arrow-right"></i></a>
+                        <a class="tool-link" href="https://huggingface.co/datasets/mike-ravkine/topout-bench-results"><span><i class="fas fa-database"></i> The dataset</span><i class="fas fa-arrow-right"></i></a>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="eyebrow">Start here</div>
+                    <h3>Four commands</h3>
+                    <div class="code-block">git clone \
+    https://github.com/the-crypt-keeper/topout-bench
+cd topout-bench &amp;&amp; uv sync
+uv run hf download mike-ravkine/topout-bench-results \
+    --repo-type dataset --local-dir results
+uv run topout-explore.py --dataset results</div>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2 class="section-title">What it does not say</h2>
+            <p class="section-sub">An arm is a served model: the quantisation, engine, template and token limit are all in it. A strong player's boards are easy because it kept them easy, so nothing here yet separates skill from situation. What we tried, what failed and what is still open is <a href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/why.md">written down</a>.</p>
+        </section>
+
+        <footer>
+            <div class="split">
+                <div>
+                    <strong>topout-bench</strong><br>
+                    MIT licensed. Sibling of <a class="inline" style="text-decoration: underline;" href="https://reasonscape.com">ReasonScape</a>.<br>
+                    <span style="font-size: 0.85rem;">Tetris® is a trademark of its owner. Not affiliated with or endorsed by The Tetris Company. No ROM is included: <a style="text-decoration: underline;" href="https://github.com/Kautenja/gym-tetris">gym-tetris</a> provides the game.</span>
+                </div>
+                <div class="cta-row" style="margin: 12px 0 0; gap: 10px;">
+                    <a class="btn secondary" href="https://huggingface.co/datasets/mike-ravkine/topout-bench-results"><i class="fas fa-database"></i>Data</a>
+                    <a class="btn secondary" href="https://github.com/the-crypt-keeper/topout-bench/blob/main/docs/read.md"><i class="fas fa-book"></i>Docs</a>
+                    <a class="btn secondary" href="https://github.com/the-crypt-keeper/topout-bench"><i class="fab fa-github"></i>GitHub</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+    <script src="replay.js"></script>
+    <script>
+        (function () {
+            const C = { full: "#3b82f6", sealed: "#eb6834" }, N = Math.max(...REPLAY.map(g => g.boards.length));
+            const bits = h => [...h].map(c => parseInt(c, 16).toString(2).padStart(4, "0")).join("");
+            const games = REPLAY.map(g => ({ ...g, boards: g.boards.map(bits) }));
+            function reached(b) {                // open cells: from the top, down and sideways, never up
+                const seen = new Set(), q = [];
+                for (let c = 0; c < 10; c++) if (b[c] === "0") { seen.add(c); q.push(c); }
+                while (q.length) {
+                    const i = q.pop(), r = Math.floor(i / 10), c = i % 10;
+                    for (const [a, d] of [[r + 1, c], [r, c - 1], [r, c + 1]]) {
+                        const j = a * 10 + d;
+                        if (a < 20 && d >= 0 && d < 10 && b[j] === "0" && !seen.has(j)) { seen.add(j); q.push(j); }
+                    }
+                }
+                return seen;
+            }
+            function draw(k) {
+                games.forEach((g, n) => {
+                    const at = Math.min(k, g.boards.length - 1), over = k >= g.boards.length - 1, b = g.boards[at], open = reached(b);
+                    const cv = document.getElementById("c" + n), x = cv.getContext("2d"), s = cv.width / 10;
+                    x.clearRect(0, 0, cv.width, cv.height);
+                    for (let i = 0; i < 200; i++) {
+                        const fill = b[i] === "1" ? C.full : open.has(i) ? null : C.sealed;
+                        if (fill) { x.fillStyle = fill; x.fillRect((i % 10) * s + 1, Math.floor(i / 10) * s + 1, s - 2, s - 2); }
+                    }
+                    cv.style.opacity = over && g.ended !== "reached the end" ? 0.45 : 1;
+                    document.getElementById("s" + n).textContent = over ? g.ended : "piece " + (at + 1) + " · lines " + g.lines[at];
+                });
+            }
+            const still = matchMedia("(prefers-reduced-motion: reduce)").matches, btn = document.getElementById("play");
+            let k = 0, on = !still;
+            if (still) k = Math.floor(games[0].boards.length * 0.7);
+            function label() { btn.textContent = on ? "Pause" : "Play"; }
+            btn.onclick = () => { on = !on; label(); };
+            label(); draw(k);
+            setInterval(() => { if (on && !document.hidden) { k = (k + 1) % (N + 14); draw(k); } }, 180);   // a pause on the last boards
+        })();
+    </script>
+</body>
+</html>
