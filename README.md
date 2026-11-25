@@ -57,6 +57,8 @@ folder of the results dataset, below), reads only journals, and writes only what
     uv run topout-flows.py --arm run1=games/run1 -o moves.png --view moves   # each placement: lines cleared, sealed cells added
     uv run topout-triangle-anim.py --arm run1=games/run1 -o tri.mp4   # the triangle lit up piece by piece (.mp4 or .gif)
     uv run topout-outcomes.py --arm run1=games/run1                # survival, then each set's final boards
+    uv run topout-burden.py --dataset results -o burden.png        # every arm: burden against tokens, and every game
+    uv run topout-decisions.py --dataset results -o decisions.png  # every arm: planning and execution fingerprints
     uv run topout-replies.py --arm run1=games/run1                 # reply lengths: a piece's first reply vs the rest
 
 - **topout-flows**: every board is a point on the triangle of empty, live (completable) and dead (holding a
@@ -81,7 +83,7 @@ journal per finished game, exactly as topout-play wrote it, at `<model>/<sampler
 side by side:
 
     uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results
-    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results --include "<model>/*"   # one model
+    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results --include "<model>/*" --include index.json   # one model
     uv run topout-outcomes.py --arm ours=results/<model>/<sampler> --arm mine=games/run1
 
 To publish your own games to a dataset repo of yours (create it first with `hf repos create`, and log in with
@@ -89,7 +91,8 @@ To publish your own games to a dataset repo of yours (create it first with `hf r
 
     uv run topout-publish.py games/run1 --repo YOU/NAME --push
 
-Without `--push` it only stages into a local copy (`--local`, default `./NAME`). A run's directory name is part
+Without `--push` it only stages into a local copy (`--local`, default `./NAME`). Labels and effort ladders live in the dataset's `index.json`: publishing adds new arms to it with a guess from their
+names, and an edit to it (a label, splitting a ladder) is kept. A run's directory name is part
 of each game's id, so keep run directory names unique within a dataset.
 
 ## Tests

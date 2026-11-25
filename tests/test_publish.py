@@ -35,7 +35,7 @@ def _target(out, run_dir, index, model="m-served", sampler="s-high"):
 
 
 def _files(out):
-    return sorted(p for p in out.rglob("*") if p.is_file()) if out.exists() else []
+    return sorted(p for p in out.rglob("*") if p.is_file() and p.name != "index.json") if out.exists() else []
 
 
 def test_a_finished_game_is_its_bytes_at_its_one_path_and_the_source_is_untouched(tmp_path):

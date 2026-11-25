@@ -1,6 +1,6 @@
 """topout-publish: put finished games into a results dataset on the Hugging Face Hub, one gzipped journal per game.
 
-    python topout-publish.py RUN_DIR [RUN_DIR ...] [--repo USER/NAME] [--local DIR] [--push]
+    python topout-publish.py [RUN_DIR ...] [--repo USER/NAME] [--local DIR] [--push]
 
 Contract. Reads every journal.jsonl under each RUN_DIR; writes LOCAL/<model>/<sampler_name>/<id>.jsonl.gz for each
 finished verbs game (last record a summary), the journal's bytes verbatim. Never edits, moves or deletes a journal.
@@ -19,6 +19,11 @@ journal without either is refused, as is a name that is empty, '.', '..' or hold
 index repeats across runs, so the run directory's name is part of its id, and the absolute path is not (it differs
 by machine). Pass the run's own directory, whose name is unique within the dataset, not a subdirectory of it.
 
+Index. After staging, an arm LOCAL/index.json lacks (topout/index.py) is added to it, its label and ladder guessed from its
+name and printed; entries already there are never changed, so correct a guess by editing the file. --push commits the
+index when it differs from the repo's, and refuses when both were edited since the last sync. With no RUN_DIR only the
+index is seeded (and pushed).
+
 Repeatable: a game whose file already holds its bytes is left as it is; a file holding other bytes is refused; a game
 whose bytes are already present under another id (the same run passed through another directory name) is refused.
 Compared decompressed, so the zlib build does not matter. Stale *.tmp files under LOCAL (an interrupted stage) are
@@ -32,7 +37,7 @@ import hashlib
 import sys
 from pathlib import Path
 
-from topout import journals
+from topout import index, journals
 
 
 def _name(rec: dict, field: str, path: Path) -> str:
@@ -90,12 +95,38 @@ class Staging:
         return counts
 
 
+def seed_index(local: Path) -> list[str]:
+    """Add arms the index lacks to LOCAL/index.json; returns them. Writes nothing when there are none."""
+    ix, added = index.seed(local)
+    if added:
+        (local / index.NAME).write_text(index.dumps(ix))
+    return added
+
+
+def resolve_index(local: Path, remote: str | None) -> None:
+    """Bring LOCAL/index.json up to the repo's without losing an edit on either side. BASE is the repo's index as last
+    synced or pushed: an unedited local copy takes the remote, an edited one stays, both changed is refused."""
+    path, base = local / index.NAME, local / BASE
+    mine = path.read_text() if path.is_file() else None
+    was = base.read_text() if base.is_file() else None
+    if remote is not None and mine != remote:
+        if mine is None or mine == was:
+            path.write_text(remote)
+        elif was != remote:
+            raise SystemExit(f"topout-publish: {path} and the repo's {index.NAME} both changed (or were never synced): "
+                             f"merge the repo's version into yours, put a copy of the repo's at {base}, and push again")
+    if remote is not None:
+        base.parent.mkdir(parents=True, exist_ok=True)
+        base.write_text(remote)
+
+
+BASE = Path(".cache") / "topout" / "index.base.json"
 DEFAULT_REPO = "mike-ravkine/topout-bench-results"
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("run_dirs", type=Path, nargs="+", help="run directories holding games (journal.jsonl under them)")
+    ap.add_argument("run_dirs", type=Path, nargs="*", help="run directories holding games (journal.jsonl under them); none: the index alone")
     ap.add_argument("--repo", default=DEFAULT_REPO, help=f"dataset repo USER/NAME (default {DEFAULT_REPO})")
     ap.add_argument("--local", type=Path, help="local copy of the dataset (default ./NAME)")
     ap.add_argument("--push", action="store_true", help="sync LOCAL from the repo first, then commit what it lacks")
@@ -105,31 +136,41 @@ def main() -> None:
         if not run_dir.is_dir():
             raise SystemExit(f"topout-publish: {run_dir}: not a directory")
     if a.push:
-        from huggingface_hub import HfApi, snapshot_download
+        from huggingface_hub import HfApi, hf_hub_download, snapshot_download
         api = HfApi()
         if not api.repo_exists(a.repo, repo_type="dataset"):
             raise SystemExit(f"topout-publish: dataset {a.repo} not found (or no access): create it first, "
                              f"hf repos create {a.repo} --repo-type dataset")
         base = api.dataset_info(a.repo).sha
-        snapshot_download(a.repo, repo_type="dataset", revision=base, local_dir=local)
+        snapshot_download(a.repo, repo_type="dataset", revision=base, local_dir=local, ignore_patterns=[index.NAME])
+        remote = set(api.list_repo_files(a.repo, repo_type="dataset", revision=base))
+        remote_index = (Path(hf_hub_download(a.repo, index.NAME, repo_type="dataset", revision=base)).read_text()
+                        if index.NAME in remote else None)
+        resolve_index(local, remote_index)
     staging = Staging(local)
     for run_dir in a.run_dirs:
         c = staging.stage(run_dir.resolve())
         print(f"{run_dir.name}: {c['written']} written, {c['unchanged']} unchanged, {c['running']} still running")
+    for arm in seed_index(local) if local.is_dir() else []:
+        print(f"{index.NAME}: added {arm}, guessed from its name; edit its label and ladder if the guess is wrong")
     if not a.push:
         print(f"staged in {local}; nothing uploaded (--push commits to {a.repo})")
         return
     from huggingface_hub import CommitOperationAdd
-    remote = set(api.list_repo_files(a.repo, repo_type="dataset", revision=base))
     new = sorted(p.relative_to(local).as_posix() for p in local.glob("*/*/*.jsonl.gz"))
     new = [p for p in new if p not in remote]
-    if not new:
-        print(f"{a.repo} already holds every game in {local}: no commit")
+    index_text = (local / index.NAME).read_text() if (local / index.NAME).is_file() else None
+    changed = [index.NAME] if index_text is not None and index_text != remote_index else []
+    if not new and not changed:
+        print(f"{a.repo} already holds every game in {local} and its index: no commit")
         return
-    info = api.create_commit(a.repo, [CommitOperationAdd(p, local / p) for p in new], repo_type="dataset",
-                             commit_message=f"{len(new)} games ({', '.join(d.name for d in a.run_dirs)})",
+    info = api.create_commit(a.repo, [CommitOperationAdd(p, local / p) for p in new + changed], repo_type="dataset",
+                             commit_message=(f"{len(new)} games ({', '.join(d.name for d in a.run_dirs)})" if new else "index"),
                              parent_commit=base)
-    print(f"{len(new)} games committed to {a.repo}: {info.commit_url}")
+    if changed:
+        (local / BASE).parent.mkdir(parents=True, exist_ok=True)
+        (local / BASE).write_text(index_text)
+    print(f"{len(new)} games{' and the index' if changed else ''} committed to {a.repo}: {info.commit_url}")
 
 
 if __name__ == "__main__":

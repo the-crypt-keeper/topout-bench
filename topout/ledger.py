@@ -138,3 +138,24 @@ def placements(rows: list[dict]) -> list[dict]:
             break
         out.append({"piece": a["piece"], "sealed": b["sealed"] - a["sealed"], "lines": b["lines"] - a["lines"]})
     return out
+
+
+def dead_rows(path: Path) -> list[int]:
+    """Dead rows on the board each piece spawned into, in piece order. A board where the piece overlaps the stack (a '#'
+    count short of 4 (p - 1) - 10 L: the piece is drawn over settled cells, or cells were lost above the top) is kept,
+    with the piece's cells counted as occupied."""
+    out, seen = [], set()
+    for t in journals.records(path):
+        if t.get("kind") != "tick" or t["pieces"] in seen:
+            continue
+        seen.add(t["pieces"])
+        board = t["board"]
+        if board.count("#") != 4 * (t["pieces"] - 1) - 10 * t["lines"]:
+            board = board.replace("@", "#")
+        out.append(regions(board)["dead_rows"])
+    return out
+
+
+def burden(dead: list[int], turns: int) -> float:
+    """Dead rows averaged over `turns` turns; every turn after the game ended counts as all ROWS of them."""
+    return (sum(dead) + ROWS * (turns - len(dead))) / turns
