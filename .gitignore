@@ -4,5 +4,6 @@ __pycache__/
 .pytest_cache/
 *.mp4
 *.png
+!docs/img/*.png
 *.csv
 games/
