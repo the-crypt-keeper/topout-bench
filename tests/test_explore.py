@@ -1,15 +1,15 @@
-"""The explorer's digests agree with the functions the scripts use, the cache follows the journal, and the address is
+"""The explorer's digests agree with the journal, the cache follows the journal, and the address is
 the only state."""
 from __future__ import annotations
 
 import importlib.util
-import json
 import os
 
 import pytest
 
 from tests.conftest import ROOT, play
-from topout import decisions, index, journals, ledger, store
+from topout import decisions, figures, index, journals, ledger, store
+from topout.data import Data
 
 spec = importlib.util.spec_from_file_location("topout_explore", ROOT / "topout-explore.py")
 ex = importlib.util.module_from_spec(spec)
@@ -24,11 +24,15 @@ def game(fake_engine, tmp_path):
     return tmp_path / "games" / "0" / "journal.jsonl"
 
 
-def test_a_digest_is_what_the_scripts_compute(game):
+def test_a_digest_is_what_the_journal_holds(game):
     d = store.digest(game)
     run = journals.run_record(game)
-    assert [p["dead"] for p in d["pieces"]] == ledger.dead_rows(game)
-    assert d["burden"] == ledger.burden(ledger.dead_rows(game), run["max_pieces"])
+    first = {}
+    for t in journals.records(game):
+        if t.get("kind") == "tick":
+            first.setdefault(t["pieces"], t)
+    dead = [ledger.regions(ledger.spawn_board(t)[0])["dead_rows"] for t in first.values()]
+    assert [p["dead"] for p in d["pieces"]] == dead and d["burden"] == ledger.burden(dead, run["max_pieces"])
     assert d["phases"] == decisions.count(journals.records(game))
     assert sum(p["cleared"] for p in d["pieces"]) == d["lines"]
     for p in d["pieces"]:
@@ -61,13 +65,13 @@ def test_the_address_round_trips_the_choice_and_keeps_it_on_the_way_down():
 
 
 def test_every_level_renders(game, tmp_path):
-    data = ex.Data(index.arms(None, [f"a={game.parent}"]), tmp_path / "cache")
+    data = Data(index.arms(None, [f"a={game.parent}"]), tmp_path / "cache")
     nav = ex.Nav(data, {})
     key = data.arms["a"]["games"][0]["key"]
     assert ex.overview(data, nav) and ex.arm_view(data, nav, "a", []) and ex.game_view(data, nav, "a", key)
     assert ex.piece_view(data, nav, "a", key, 1)
     ex.build(data)
-    two = ex.Data(index.arms(None, [f"a={game.parent}", f"b={game.parent}"]), tmp_path / "cache")
+    two = Data(index.arms(None, [f"a={game.parent}", f"b={game.parent}"]), tmp_path / "cache")
     for narrow in (False, True):
         nav = ex.Nav(two, {}, narrow)
         assert ex.arm_view(two, nav, "a", ["b"]) and ex.overview(two, nav) and ex.game_view(two, nav, "b", key)
@@ -84,12 +88,12 @@ def test_one_per_model_by_performance_and_by_cost_and_the_rail_does_not_move_the
     arm = lambda model, tokens, burden: dict(arm=index.Arm("", [], model), mean=tokens, burden=burden)
     data = type("D", (), {"arms": {"m low": arm("m", 1000, 14), "m mid": arm("m", 3000, 3), "m max": arm("m", 30000, 1),
                                    "n": arm("n", 60000, 16)}})
-    pick = lambda names, show: ex.one_per_model(data, names, "mean", show)
+    pick = lambda names, show: figures.one_per_model(data, names, "mean", show)
     assert pick(list(data.arms), "cost") == ["m mid", "n"] and pick(list(data.arms), "performance") == ["m max", "n"]
     assert pick(["m low", "m mid"], "performance") == ["m mid"] and pick(["m low", "m max"], "cost") == ["m max"]
 
 
 def test_labels_of_neighbouring_points_take_different_sides():
-    assert ex.place_labels([(100, 100)], ["one"], [(90, 110)]) == ["bottom right"]
-    a, b = ex.place_labels([(100, 100), (160, 98)], ["a long label here", "another"], [(90, 110), (88, 108)])
+    assert figures.place_labels([(100, 100)], ["one"], [(90, 110)]) == ["bottom right"]
+    a, b = figures.place_labels([(100, 100), (160, 98)], ["a long label here", "another"], [(90, 110), (88, 108)])
     assert a != b

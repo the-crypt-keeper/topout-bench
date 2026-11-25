@@ -1,6 +1,6 @@
 """Replies by phase: planning (conv_turn 0) and execution (the rest), counted, never pooled.
 
-Contract. Counts a journal's replies; draws nothing. topout-decisions and topout-explore both read these counts.
+Contract. Counts a journal's replies; draws nothing. topout/figures.py draws these counts.
 
 A reply is planning when it opens a conversation: a piece's first reply, a retry of it, or the first after a restart.
 Every attempt the engine returned is a reply, so a truncated one and its retry both count. Replies per piece is a
@@ -11,9 +11,7 @@ from __future__ import annotations
 import math
 from collections import Counter
 from collections.abc import Iterable
-from pathlib import Path
 
-from topout import journals
 from topout.calls import is_reply
 from topout.prompt import BUTTONS
 
@@ -60,13 +58,6 @@ def merge(games: Iterable[tuple[list[dict], Counter]]) -> tuple[list[dict], Coun
             for k, v in g.items():
                 d[k].update(v) if isinstance(v, Counter) else d.__setitem__(k, d[k] + v)
     return out, per_piece
-
-
-def phases(paths: list[Path]) -> tuple[list[dict], Counter, set[int]]:
-    """An arm's counts, its replies per piece, and the max_tokens its run records hold."""
-    caps = {(journals.run_record(p).get("sampler") or {}).get("max_tokens") for p in paths}
-    both, per_piece = merge(count(journals.records(p)) for p in paths)
-    return both, per_piece, {c for c in caps if c}
 
 
 def share(counter: Counter, keys) -> list[float]:

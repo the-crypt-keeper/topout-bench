@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import os
 import pickle
-from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 

@@ -1,11 +1,9 @@
 """Replies are counted once each, from the journal alone, against what the engine actually served."""
 from __future__ import annotations
 
-import subprocess
-import sys
-
+from tests.conftest import counts, play
+from topout import decisions
 from topout.calls import is_reply
-from tests.conftest import ROOT, counts, play
 
 
 def test_replies_counts_every_served_reply_once_split_by_turn(fake_engine, tmp_path):
@@ -14,12 +12,9 @@ def test_replies_counts_every_served_reply_once_split_by_turn(fake_engine, tmp_p
     assert r.returncode == 0, r.stdout[-2000:]
     assert any(x.get("parse_error") == "capped" for x in rows)        # a lost decision is in the sample
     first = sum(1 for x in rows if is_reply(x) and x["conv_turn"] == 0)
-    out = subprocess.run([sys.executable, str(ROOT / "topout-replies.py"), "--arm", f"fake={tmp_path / 'g'}"],
-                         capture_output=True, text=True, timeout=60, cwd=ROOT)
-    assert out.returncode == 0, out.stderr
-    counts = {line.split()[1]: int(line.split()[3]) for line in out.stdout.splitlines() if line.startswith("fake ")}
-    assert counts["first"] + counts["later"] == fake_engine.served(), out.stdout
-    assert counts["first"] == first
+    (plan, execute), per_piece = decisions.count(rows)
+    assert plan["n"] + execute["n"] == fake_engine.served() and plan["n"] == first
+    assert plan["truncated"] + execute["truncated"] == counts(rows)["capped"]
 
 
 def test_journal_records_match_the_engine_and_the_live_lines(fake_engine, tmp_path):

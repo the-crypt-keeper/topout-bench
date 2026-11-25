@@ -3,7 +3,7 @@
 Contract. Plays: talks to one OpenAI-compatible endpoint, presses buttons, and writes OUTPUT/journal.jsonl (with
 --games, OUTPUT/<i>/journal.jsonl per game) and nothing else. The journal is the record of everything that happened;
 the player computes no statistic over it: its summary holds only how the game ended, and every count, rate or
-distribution is analysis (topout-replies, topout-flows, ...). Prints live events for whoever
+distribution is analysis (topout-plot, topout-explore, ...). Prints live events for whoever
 watches: one progress line per press, and NUDGE: / CAPPED: / LOST: / RESET: / ERROR: lines.
 
 The decisions are the tools: start() left() right() rotate() drop() wait(), against any OpenAI-compatible

@@ -84,13 +84,13 @@ def test_a_published_folder_is_analysed_like_the_games_it_came_from(fake_engine,
     folder = out                                         # conftest.play names each game's sampler after its directory
     assert len(list(folder.rglob("*.jsonl.gz"))) == 2
 
-    def replies(path):
-        r = subprocess.run([sys.executable, ROOT / "topout-replies.py", "--arm", f"a={path}"],
-                           capture_output=True, text=True, timeout=120, cwd=ROOT)
-        assert r.returncode == 0, r.stderr
-        return r.stdout
+    def tables(path):
+        out = []
+        for kind in ("burden", "decisions", "triangle", "moves"):
+            r = subprocess.run([sys.executable, ROOT / "topout-plot.py", kind, "--arm", f"a={path}", "--table", "--cache", tmp_path / "c"],
+                               capture_output=True, text=True, timeout=120, cwd=ROOT)
+            assert r.returncode == 0, r.stderr
+            out.append(r.stdout)
+        return out
 
-    assert replies(folder) == replies(run / "game")
-    o = subprocess.run([sys.executable, ROOT / "topout-outcomes.py", "--arm", f"a={folder}"],
-                       capture_output=True, text=True, timeout=120, cwd=ROOT)
-    assert o.returncode == 0 and "a: survived 2 / 2" in o.stdout, (o.stdout, o.stderr)
+    assert tables(folder) == tables(run / "game")
