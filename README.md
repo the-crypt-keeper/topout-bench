@@ -49,8 +49,8 @@ inputs replay the game exactly. The player computes no statistics: everything be
 
 ## Replay and analyse
 
-Every analysis takes arms as `--arm NAME=PATH[,PATH...]` (a journal, a game directory or a directory of games),
-reads only journals, and writes only what its `-o` / `--csv` names.
+Every analysis takes arms as `--arm NAME=PATH[,PATH...]` (a journal, a game directory, a directory of games or a
+folder of the results dataset, below), reads only journals, and writes only what its `-o` / `--csv` names.
 
     uv run topout-video.py games/run1 -o run1.mp4                  # every game side by side, in game time
     uv run topout-flows.py --arm run1=games/run1 -o flows.png   # the triangle: where play lives, how games ended
@@ -71,6 +71,26 @@ reads only journals, and writes only what its `-o` / `--csv` names.
   arm's spawn boards accumulate (the last frame is the static view), dots for the games alive at that piece, end
   markers from the piece each game ended. The clock is the frame, never an axis: how an arm reaches its fingerprint.
 - **topout-replies**: completion tokens and reasoning per reply, a piece's first reply apart from the rest.
+
+## Results dataset
+
+Our games are on the Hugging Face Hub as
+[mike-ravkine/topout-bench-results](https://huggingface.co/datasets/mike-ravkine/topout-bench-results): one gzipped
+journal per finished game, exactly as topout-play wrote it, at `<model>/<sampler>/<id>.jsonl.gz`. Each
+`<model>/<sampler>` folder is an arm, and every analysis reads it as it reads your own games, so ours and yours sit
+side by side:
+
+    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results
+    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results --include "<model>/*"   # one model
+    uv run topout-outcomes.py --arm ours=results/<model>/<sampler> --arm mine=games/run1
+
+To publish your own games to a dataset repo of yours (create it first with `hf repos create`, and log in with
+`hf auth login`):
+
+    uv run topout-publish.py games/run1 --repo YOU/NAME --push
+
+Without `--push` it only stages into a local copy (`--local`, default `./NAME`). A run's directory name is part
+of each game's id, so keep run directory names unique within a dataset.
 
 ## Tests
 

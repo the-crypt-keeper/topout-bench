@@ -14,7 +14,7 @@ RUN = json.loads((ROOT / "tests" / "fixtures" / "v1-run.json").read_text())
 
 
 def _publish(out, *run_dirs):
-    return subprocess.run([sys.executable, ROOT / "topout-publish.py", out, *run_dirs],
+    return subprocess.run([sys.executable, ROOT / "topout-publish.py", *run_dirs, "--local", out],
                           capture_output=True, text=True, timeout=120, cwd=ROOT)
 
 

@@ -13,6 +13,7 @@ dependencies = [
     "requests",
     "pillow",
     "matplotlib",
+    "huggingface-hub>=2.4.0",
 ]
 
 [dependency-groups]

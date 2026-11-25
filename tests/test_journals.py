@@ -79,7 +79,7 @@ def test_a_published_folder_is_analysed_like_the_games_it_came_from(fake_engine,
         r, rows = play(fake_engine(seed=i), run / "game" / str(i), pieces=3)
         assert r.returncode == 0 and rows[-1]["kind"] == "summary"
     out = tmp_path / "out"
-    p = subprocess.run([sys.executable, ROOT / "topout-publish.py", out, run], capture_output=True, text=True, cwd=ROOT)
+    p = subprocess.run([sys.executable, ROOT / "topout-publish.py", run, "--local", out], capture_output=True, text=True, cwd=ROOT)
     assert p.returncode == 0, p.stderr
     folder = out                                         # conftest.play names each game's sampler after its directory
     assert len(list(folder.rglob("*.jsonl.gz"))) == 2
