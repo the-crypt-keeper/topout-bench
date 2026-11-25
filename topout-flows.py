@@ -44,7 +44,6 @@ fewer clearing placements is play that saves its clears.
 from __future__ import annotations
 
 import argparse
-import json
 from collections import Counter
 from pathlib import Path
 
@@ -197,11 +196,7 @@ def plot(arms: dict[str, list[dict]], out: Path, view: str) -> None:
 
 def game(path: Path) -> dict | None:
     """A finished game's spawn boards, transitions and outcome; None while it is still running."""
-    summary = None
-    with path.open() as f:
-        for line in f:
-            if '"kind": "summary"' in line:
-                summary = json.loads(line)
+    summary = journals.summary(path)
     if summary is None:
         return None
     rows = ledger.piece_rows(path)

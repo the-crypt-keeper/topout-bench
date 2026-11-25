@@ -34,7 +34,6 @@ clearing, loose slack, dead slack. Survival needs 0.4 lines a piece; below it th
 """
 from __future__ import annotations
 
-import json
 from collections import deque
 from pathlib import Path
 
@@ -87,20 +86,18 @@ def piece_rows(path: Path) -> list[dict]:
     model = journals.run_record(path).get("model") or "?"
     game = journals.game_id(path)
     rows, seen = [], set()
-    with path.open() as f:
-        for line in f:
-            t = json.loads(line)
-            if t.get("kind") != "tick" or t["pieces"] in seen:
-                continue
-            seen.add(t["pieces"])
-            p, lines = t["pieces"], t["lines"]
-            row = {"game": game, "model": model, "piece": p, "lines": lines} \
-                | regions(t["board"]) | {"packed": 0.4 * (p - 1) - lines}
-            row["occluded"] = row["filled"] != 4 * (p - 1) - 10 * lines
-            prev = rows[-1] if rows else None
-            for k in ("lines", "open_slack", "sealed_slack"):
-                row[f"d_{k}"] = row[k] - prev[k] if prev else None
-            rows.append(row)
+    for t in journals.records(path):
+        if t.get("kind") != "tick" or t["pieces"] in seen:
+            continue
+        seen.add(t["pieces"])
+        p, lines = t["pieces"], t["lines"]
+        row = {"game": game, "model": model, "piece": p, "lines": lines} \
+            | regions(t["board"]) | {"packed": 0.4 * (p - 1) - lines}
+        row["occluded"] = row["filled"] != 4 * (p - 1) - 10 * lines
+        prev = rows[-1] if rows else None
+        for k in ("lines", "open_slack", "sealed_slack"):
+            row[f"d_{k}"] = row[k] - prev[k] if prev else None
+        rows.append(row)
     return rows
 
 

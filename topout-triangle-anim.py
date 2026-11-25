@@ -18,7 +18,6 @@ as the frame, never on an axis, to watch how an arm reaches its fingerprint. Kep
 from __future__ import annotations
 
 import argparse
-import json
 from collections import Counter
 from pathlib import Path
 
@@ -34,11 +33,7 @@ ROWS = ledger.ROWS
 
 def game(path: Path) -> dict | None:
     """A finished game's clean spawn states by piece, its last clean piece, and its outcome; None while running."""
-    summary = None
-    with path.open() as f:
-        for line in f:
-            if '"kind": "summary"' in line:
-                summary = json.loads(line)
+    summary = journals.summary(path)
     if summary is None:
         return None
     clean = [r for r in ledger.piece_rows(path) if not r["occluded"]]

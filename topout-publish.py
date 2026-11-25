@@ -26,21 +26,10 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
-import json
 import sys
 from pathlib import Path
 
-
-def _last_kind(path: Path) -> str | None:
-    """The kind of the journal's last record, reading only the file's tail (a summary can be long)."""
-    size = path.stat().st_size
-    with path.open("rb") as f:
-        f.seek(max(0, size - (1 << 20)))
-        tail = f.read().rstrip(b"\n")
-    try:
-        return json.loads(tail.rsplit(b"\n", 1)[-1]).get("kind")
-    except (ValueError, AttributeError):
-        return None
+from topout import journals
 
 
 def _name(rec: dict, field: str, path: Path) -> str:
@@ -66,23 +55,20 @@ class Staging:
 
     def stage(self, run_dir: Path) -> dict[str, int]:
         counts = {"written": 0, "unchanged": 0, "running": 0}
-        journals = sorted(run_dir.rglob("journal.jsonl"))
-        if not journals:
+        sources = sorted(run_dir.rglob("journal.jsonl"))
+        if not sources:
             raise SystemExit(f"topout-publish: {run_dir}: no journal.jsonl under it")
-        for path in journals:
-            if _last_kind(path) != "summary":            # still running, or never wrote a line
+        for path in sources:
+            if journals.summary(path) is None:           # still running, or never wrote a line
                 counts["running"] += 1
                 continue
-            data = path.read_bytes()
-            try:
-                rec = json.loads(data.split(b"\n", 1)[0])
-            except ValueError:
-                rec = {}
-            if rec.get("kind") != "run" or rec.get("decision") != "verbs":
+            rec = journals.run_record(path)
+            if rec.get("decision") != "verbs":
                 raise SystemExit(f"topout-publish: {path}: not a verbs game's run record; refused")
             folder = self.out / _name(rec, "model", path) / _name(rec, "sampler_name", path)
             ident = f"{run_dir.name}/{path.relative_to(run_dir).as_posix()}"
             target = folder / f"{hashlib.sha256(ident.encode()).hexdigest()}.jsonl.gz"
+            data = path.read_bytes()
             digest = hashlib.sha256(data).hexdigest()
             index = self.index(folder)
             if target.exists():

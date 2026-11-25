@@ -16,7 +16,6 @@ game stopped, not an outcome.
 from __future__ import annotations
 
 import argparse
-import json
 import math
 from pathlib import Path
 
@@ -25,11 +24,7 @@ from topout import journals, ledger
 
 def outcome(path: Path) -> dict | None:
     """The game's outcome and its last clean board; None for a game with no summary."""
-    summary = None
-    with path.open() as f:
-        for line in f:
-            if '"kind": "summary"' in line:
-                summary = json.loads(line)
+    summary = journals.summary(path)
     if summary is None:
         return None
     rows = [r for r in ledger.piece_rows(path) if not r["occluded"]]

@@ -25,7 +25,6 @@ file the game was played with, when recorded), seed, and the game's index.
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 import subprocess
 import sys
@@ -62,15 +61,18 @@ class Arm:
     """One game: its journal, its input stream, and its decisions placed in frames."""
 
     def __init__(self, journal: Path):
-        self.game_dir = journal.parent
-        recs = [json.loads(line) for line in open(journal)]
+        self.journal = journal
+        recs = list(journals.records(journal))
         self.run = recs[0] if recs and recs[0].get("kind") == "run" else {}
         if self.run.get("mode") != "tetris-tool" or self.run.get("decision") != "verbs":
             sys.exit(f"topout-video: {journal} is not a tool-verbs journal "
                      f"(mode {self.run.get('mode')!r}, decision {self.run.get('decision')!r})")
         self.ticks = [r for r in recs if r.get("kind") == "tick"]
         self.summary = next((r for r in recs if r.get("kind") == "summary"), None)
-        game_no = f"game {self.game_dir.name}" if self.game_dir.name.isdigit() else None
+        if journal.name == journals.PLAIN:                # a --parallel game directory is its index
+            game_no = f"game {journal.parent.name}" if journal.parent.name.isdigit() else None
+        else:                                             # a published game: the head of its id
+            game_no = f"game {journals.game_id(journal)[:8]}"
         self.label = " · ".join(str(x) for x in (self.run.get("model"), self.run.get("sampler_name"),
                                                   f"seed {self.run.get('seed')}", game_no) if x)
         self.inputs, self.decisions = self._replay()
@@ -83,7 +85,7 @@ class Arm:
         inputs: list[int] = []
 
         def diverged(tick, what: str):
-            sys.exit(f"topout-video: {self.game_dir}: replay diverges from the journal at tick {tick} "
+            sys.exit(f"topout-video: {self.journal}: replay diverges from the journal at tick {tick} "
                      f"({what}); the harness replaying it is not the one that played it")
 
         decisions = []

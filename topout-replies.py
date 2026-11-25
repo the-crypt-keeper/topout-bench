@@ -15,7 +15,6 @@ the rest together.
 from __future__ import annotations
 
 import argparse
-import json
 
 from topout import journals
 from topout.calls import is_reply
@@ -27,13 +26,11 @@ def replies(paths) -> dict[str, list[tuple[int, int]]]:
     """(completion tokens, reasoning chars) per reply, under "first" (conv_turn 0) or "later"."""
     out: dict[str, list[tuple[int, int]]] = {"first": [], "later": []}
     for j in paths:
-        with j.open() as f:
-            for line in f:
-                r = json.loads(line)
-                if not is_reply(r):
-                    continue
-                out["first" if r["conv_turn"] == 0 else "later"].append(
-                    (int((r["usage"] or {}).get("completion_tokens") or 0), len(r.get("reasoning") or "")))
+        for r in journals.records(j):
+            if not is_reply(r):
+                continue
+            out["first" if r["conv_turn"] == 0 else "later"].append(
+                (int((r["usage"] or {}).get("completion_tokens") or 0), len(r.get("reasoning") or "")))
     return out
 
 
