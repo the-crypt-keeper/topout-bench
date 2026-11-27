@@ -152,3 +152,14 @@ def test_a_stale_tmp_from_an_interrupted_stage_is_refused_before_anything_is_wri
     r = _publish(out, run)
     assert r.returncode != 0 and "stale" in r.stderr
     assert _files(out) == [stale]
+
+
+def test_sync_only_downloads_it_refuses_a_run_dir_or_push_and_writes_nothing(tmp_path):
+    run = tmp_path / "play-0-20261127T000000Z"
+    _journal(run, 0)
+    out = tmp_path / "out"
+    for extra in ([run], ["--push"]):
+        p = subprocess.run([sys.executable, ROOT / "topout-publish.py", "--sync", *extra, "--local", out],
+                           capture_output=True, text=True, timeout=120, cwd=ROOT)
+        assert p.returncode != 0 and "--sync only downloads" in p.stderr
+        assert not out.exists()

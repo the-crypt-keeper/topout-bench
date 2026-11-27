@@ -1,10 +1,15 @@
 """topout-publish: put finished games into a results dataset on the Hugging Face Hub, one gzipped journal per game.
 
     python topout-publish.py [RUN_DIR ...] [--repo USER/NAME] [--local DIR] [--push]
+    python topout-publish.py --sync [--repo USER/NAME] [--local DIR]
 
 Contract. Reads every journal.jsonl under each RUN_DIR; writes LOCAL/<model>/<sampler_name>/<id>.jsonl.gz for each
 finished verbs game (last record a summary), the journal's bytes verbatim. Never edits, moves or deletes a journal.
 Games still running (or that never wrote a line) are skipped and counted. Without --push nothing leaves the machine.
+
+--sync is the download: LOCAL is brought up to the repo's current revision (every game, and the index as in Index below)
+and nothing else happens. It takes no RUN_DIR, stages nothing, commits nothing and needs no token for a public repo. It
+is the way to get the dataset, and to bring a local copy up to date before staging into it.
 
 --repo is the dataset repo, by default this project's own (mike-ravkine/topout-bench-results); pass your own to publish
 yours. It must exist (hf repos create NAME --repo-type dataset), and pushing needs a write token (hf auth login).
@@ -124,29 +129,43 @@ BASE = Path(".cache") / "topout" / "index.base.json"
 DEFAULT_REPO = "mike-ravkine/topout-bench-results"
 
 
+def sync(repo: str, local: Path):
+    """Bring LOCAL up to REPO's current revision: every file but the index downloaded, the index resolved. Returns the
+    API, that revision, the files it holds and its index text (None when it has none)."""
+    from huggingface_hub import HfApi, hf_hub_download, snapshot_download
+    api = HfApi()
+    if not api.repo_exists(repo, repo_type="dataset"):
+        raise SystemExit(f"topout-publish: dataset {repo} not found (or no access): create it first, "
+                         f"hf repos create {repo} --repo-type dataset")
+    base = api.dataset_info(repo).sha
+    snapshot_download(repo, repo_type="dataset", revision=base, local_dir=local, ignore_patterns=[index.NAME])
+    remote = set(api.list_repo_files(repo, repo_type="dataset", revision=base))
+    remote_index = (Path(hf_hub_download(repo, index.NAME, repo_type="dataset", revision=base)).read_text()
+                    if index.NAME in remote else None)
+    resolve_index(local, remote_index)
+    return api, base, remote, remote_index
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("run_dirs", type=Path, nargs="*", help="run directories holding games (journal.jsonl under them); none: the index alone")
     ap.add_argument("--repo", default=DEFAULT_REPO, help=f"dataset repo USER/NAME (default {DEFAULT_REPO})")
     ap.add_argument("--local", type=Path, help="local copy of the dataset (default ./NAME)")
     ap.add_argument("--push", action="store_true", help="sync LOCAL from the repo first, then commit what it lacks")
+    ap.add_argument("--sync", action="store_true", help="only bring LOCAL up to the repo: download, stage nothing, commit nothing")
     a = ap.parse_args()
     local = a.local or Path(a.repo.rsplit("/", 1)[-1])
     for run_dir in a.run_dirs:
         if not run_dir.is_dir():
             raise SystemExit(f"topout-publish: {run_dir}: not a directory")
-    if a.push:
-        from huggingface_hub import HfApi, hf_hub_download, snapshot_download
-        api = HfApi()
-        if not api.repo_exists(a.repo, repo_type="dataset"):
-            raise SystemExit(f"topout-publish: dataset {a.repo} not found (or no access): create it first, "
-                             f"hf repos create {a.repo} --repo-type dataset")
-        base = api.dataset_info(a.repo).sha
-        snapshot_download(a.repo, repo_type="dataset", revision=base, local_dir=local, ignore_patterns=[index.NAME])
-        remote = set(api.list_repo_files(a.repo, repo_type="dataset", revision=base))
-        remote_index = (Path(hf_hub_download(a.repo, index.NAME, repo_type="dataset", revision=base)).read_text()
-                        if index.NAME in remote else None)
-        resolve_index(local, remote_index)
+    if a.sync and (a.push or a.run_dirs):
+        raise SystemExit("topout-publish: --sync only downloads: it takes no RUN_DIR and no --push")
+    if a.sync or a.push:
+        api, base, remote, remote_index = sync(a.repo, local)
+    if a.sync:
+        games = sum(1 for _ in local.glob("*/*/*.jsonl.gz"))
+        print(f"{local}: synced to {a.repo} @ {base[:8]}, {games} games; nothing staged or committed")
+        return
     staging = Staging(local)
     for run_dir in a.run_dirs:
         c = staging.stage(run_dir.resolve())

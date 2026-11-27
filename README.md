@@ -40,7 +40,7 @@ hosted APIs).
 | `topout-explore.py` | the Explorer: every arm, game, piece and decision, interactive |
 | `topout-plot.py` | the Explorer's figures as images or pages, and their numbers as tables |
 | `topout-video.py` | the games as played, replayed through the emulator |
-| `topout-publish.py` | puts finished games into a results dataset |
+| `topout-publish.py` | downloads the results dataset, and puts finished games into one |
 
 ## Quick start
 
@@ -48,7 +48,7 @@ You need [uv](https://docs.astral.sh/uv/) and Python 3.13 or later. To look at o
 
     git clone https://github.com/the-crypt-keeper/topout-bench && cd topout-bench
     uv sync
-    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results
+    uv run topout-publish.py --sync --local results                                                  # our games, no login
     uv run topout-explore.py --dataset results                                                       # http://127.0.0.1:8050
 
 To play your own against a local engine, and see them beside ours:

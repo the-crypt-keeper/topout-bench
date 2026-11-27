@@ -109,8 +109,13 @@ the Explorer first.
 
 Our games: [mike-ravkine/topout-bench-results](https://huggingface.co/datasets/mike-ravkine/topout-bench-results).
 
-    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results
-    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results --include "<model>/*" --include index.json     # one model
+    uv run topout-publish.py --sync --local results                    # every game and the index; run again to update
+
+`--sync` downloads the repo's current revision into the local copy and does nothing else: it stages nothing, commits
+nothing and needs no login. An index edited locally since the last sync is kept; if the Hub's changed too, it refuses and
+says how to merge. To take one model only, `hf download` still works:
+
+    uv run hf download mike-ravkine/topout-bench-results --repo-type dataset --local-dir results --include "<model>/*" --include index.json
 
     <model>/<sampler>/<id>.jsonl.gz      one finished game's journal, verbatim, gzipped
     index.json                           labels and effort ladders
@@ -133,6 +138,7 @@ list still appears, under its folder names and in no ladder. Edit the file by ha
 To your own dataset repo (create it with `uv run hf repos create NAME --repo-type dataset`, log in with
 `uv run hf auth login`):
 
+    uv run topout-publish.py --sync --repo YOU/NAME                    # brings ./NAME up to the repo first
     uv run topout-publish.py games/run1 --repo YOU/NAME                # stages into ./NAME; nothing leaves the machine
     uv run topout-publish.py games/run1 --repo YOU/NAME --push         # syncs, stages, commits what the repo lacks
     uv run topout-publish.py --repo YOU/NAME --push                    # the index alone, after editing it
